@@ -34,8 +34,15 @@ ipcMain.handle('fellow:deleteProfile', async (_e, pid) => (await client()).delet
 // macOS Keychain / Windows DPAPI / Linux libsecret hold the key; the encrypted blob
 // lives in userData. Plaintext credentials never touch disk.
 const credsFile = () => path.join(app.getPath('userData'), 'curvia-creds.bin');
+// Returns false (instead of throwing) when the OS keychain is unavailable, so a valid
+// sign-in still works for the session — it just won't survive a restart.
 function storeCreds(email, password) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    console.warn('curvia: OS keychain unavailable — sign-in will not persist across restarts');
+    return false;
+  }
   fs.writeFileSync(credsFile(), safeStorage.encryptString(JSON.stringify({ email, password })));
+  return true;
 }
 function loadStoredCreds() {
   try {
@@ -49,8 +56,8 @@ ipcMain.handle('fellow:signIn', async (_e, email, password) => {
   c.setCredentials(email, password);
   try {
     await c.getProfiles();          // validate against the API before persisting
-    storeCreds(email, password);    // only persist if the login actually worked
-    return { ok: true };
+    const persisted = storeCreds(email, password);   // only persist if the login actually worked
+    return { ok: true, persisted };
   } catch (err) {
     c.setCredentials(null, null);
     return { ok: false, error: String(err.message || err) };
@@ -76,6 +83,10 @@ async function createWindow() {
       nodeIntegration: false,
     },
   });
+  // The app is a single local file; never follow external navigation or open windows
+  // (defense-in-depth if markup ever gets injected via cloud profile text).
+  win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file://')) e.preventDefault(); });
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   await win.loadFile(path.join(__dirname, 'index.html'));
   return win;
 }

@@ -68,14 +68,22 @@ await page.reload();
 await page.waitForTimeout(300);
 check('custom profile survives reload', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
 
-// 7. select → edit from detail → delete
+// 7. select → edit from detail → delete (two-step: first click arms, second deletes)
 await page.locator('.pitem', { hasText: 'Playwright Test' }).click();
 await page.screenshot({ path: 'shots/manager.png' });
 await page.click('#editBtn');
 check('edit opens editor prefilled', (await page.inputValue('#edName')) === 'Playwright Test');
 await page.screenshot({ path: 'shots/editor.png' });
 await page.click('#edDelete');
+check('first delete click arms confirmation', (await page.locator('#edDelete').textContent()) === 'Confirm delete');
+check('profile not deleted before confirm', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
+await page.click('#edDelete');
 check('deleted profile removed', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 0);
+
+// 8. export downloads a JSON backup
+const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportBtn')]);
+const fname = download.suggestedFilename();
+check('export downloads a JSON backup', fname.startsWith('curvia-profiles-') && fname.endsWith('.json'));
 
 await browser.close();
 server.close();

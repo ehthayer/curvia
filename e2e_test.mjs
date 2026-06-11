@@ -49,9 +49,11 @@ try {
   check('EDIT: decliningTemp -> on', mt?.decliningTemp === 'on', String(mt?.decliningTemp));
   check('EDIT: notes -> "e2e note"', mt?.notes === 'e2e note', JSON.stringify(mt?.notes));
 
-  // ---- DELETE via the editor ----
+  // ---- DELETE via the editor (two-step: arm, then confirm) ----
   await page.locator('.pitem', { hasText: 'My Test' }).first().click();
   await page.click('#editBtn');
+  await page.click('#edDelete');
+  check('DELETE: first click arms confirmation', (await page.locator('#edDelete').textContent()) === 'Confirm delete');
   await page.click('#edDelete');
   await page.waitForTimeout(2800);
   check('DELETE: gone from list', (await page.locator('.pitem', { hasText: 'My Test' }).count()) === 0);
