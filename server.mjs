@@ -18,6 +18,14 @@ import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile,
 
 const PORT = process.env.PORT || 8099;
 
+// Local-only hardening: the API drives a real espresso account, so reject anything
+// that isn't a same-machine browser talking to localhost.
+//  - Host allowlist blocks DNS-rebinding (a remote page pointing its own hostname here).
+//  - Requiring JSON content-type on body-carrying writes makes cross-origin fetches
+//    non-"simple", so browsers preflight (and fail) them instead of firing the write.
+const ALLOWED_HOSTS = new Set([`localhost:${PORT}`, `127.0.0.1:${PORT}`, `[::1]:${PORT}`]);
+const isJson = req => (req.headers['content-type'] || '').split(';')[0].trim() === 'application/json';
+
 const send = (res, code, body, type = 'application/json') => {
   res.writeHead(code, { 'content-type': type });
   res.end(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body));
@@ -32,11 +40,15 @@ const readJson = req => new Promise((resolve, reject) => {
 
 const server = createServer(async (req, res) => {
   try {
+    if (!ALLOWED_HOSTS.has(req.headers.host)) return send(res, 403, { error: 'forbidden host' });
     if (req.url === '/' || req.url === '/index.html') {
       return send(res, 200, await readFile(new URL('./index.html', import.meta.url)), 'text/html');
     }
     if (req.url.startsWith('/api/')) {
       if (!hasCredentials()) return send(res, 503, { error: 'set FELLOW_EMAIL and FELLOW_PASSWORD env vars' });
+      if ((req.method === 'POST' || req.method === 'PATCH') && !isJson(req)) {
+        return send(res, 415, { error: 'content-type must be application/json' });
+      }
       if (req.url === '/api/profiles' && req.method === 'GET') return send(res, 200, await getProfiles());
       if (req.url === '/api/profiles' && req.method === 'POST') return send(res, 200, await createProfile(await readJson(req)));
       if (req.url.startsWith('/api/profiles/') && req.method === 'PATCH') {
@@ -60,7 +72,7 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {   // loopback only — never expose the account to the LAN
   const mode = hasCredentials() ? 'LIVE (Fellow account configured)' : 'SIM only (no FELLOW_EMAIL/PASSWORD)';
   console.log(`Fellow mockup → http://localhost:${PORT}   [${mode}]`);
 });

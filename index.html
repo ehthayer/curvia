@@ -207,6 +207,7 @@
     <div class="list-col">
       <div class="list-head">
         <input class="search" id="search" type="text" placeholder="Search profiles…" />
+        <button class="mini-btn" id="exportBtn" title="Download all profiles as JSON (backup)">Export</button>
         <button class="mini-btn" id="newProfileBtn">+ New</button>
       </div>
       <div class="plist" id="profiles"></div>
@@ -321,6 +322,12 @@ function profileMeta(points) {
 
 const $ = id => document.getElementById(id);
 
+/* Cloud profile text (title, roaster, notes, …) is account data shared with the
+   official app — treat it as untrusted and escape it everywhere it meets innerHTML. */
+const esc = v => String(v ?? '').replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const safeImageUrl = u => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? esc(u) : null;
+
 /* ---------- profile manager: folders | list | detail ---------- */
 let activeProfileId = null;   // which profile the machine has active (from the device object)
 const FOLDERS = [
@@ -351,8 +358,8 @@ function renderList() {
   if (!list.some(p => p.id === state.profile) && list.length) state.profile = list[0].id;
   $('profiles').innerHTML = list.length ? list.map(p => `
     <div class="pitem ${p.id === state.profile ? 'sel' : ''}" data-id="${p.id}">
-      <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${p.name}</div>
-      <div class="pmeta">${p.meta}</div>
+      <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${esc(p.name)}</div>
+      <div class="pmeta">${esc(p.meta)}</div>
     </div>`).join('') : '<div class="pmeta" style="padding:10px">No profiles match.</div>';
 }
 
@@ -361,9 +368,10 @@ function renderDetail() {
   const p = PROFILES.find(x => x.id === state.profile);
   if (!p) { el.innerHTML = '<div class="empty">Select a profile.</div>'; return; }
   const f = p.fellow;
-  const photo = f && f.imageUrl ? `<img class="photo" src="${f.imageUrl}" alt="" onerror="this.remove()">` : '';
+  const photoUrl = f && safeImageUrl(f.imageUrl);
+  const photo = photoUrl ? `<img class="photo" src="${photoUrl}" alt="" onerror="this.remove()">` : '';
   const sub = f ? [f.roasterName, f.folder].filter(Boolean).join(' · ') : (p.custom ? 'custom · local' : 'built-in');
-  const param = (k, v) => `<div class="param"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const param = (k, v) => `<div class="param"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
   const params = f ? [
     param('Temp', f.temperature != null ? f.temperature + ' °C' : '—'),
     param('Dose', f.dose != null ? f.dose + ' g' : '—'),
@@ -374,11 +382,11 @@ function renderDetail() {
   ].join('') : param('Peak', Math.max(...p.points.map(pt => pt.p)).toFixed(1).replace('.0', '') + ' bar');
   el.innerHTML = `
     ${photo}
-    <div class="dtitle">${p.name}${isActive(p) ? ' <span class="active-badge">★ Active</span>' : ''}</div>
-    <div class="dsub">${sub || '—'}</div>
+    <div class="dtitle">${esc(p.name)}${isActive(p) ? ' <span class="active-badge">★ Active</span>' : ''}</div>
+    <div class="dsub">${esc(sub || '—')}</div>
     <canvas id="detailCurve" width="560" height="200"></canvas>
     <div class="params">${params}</div>
-    ${f && f.notes ? `<div class="notes">${f.notes}</div>` : ''}
+    ${f && f.notes ? `<div class="notes">${esc(f.notes)}</div>` : ''}
     <div class="dactions">
       ${f && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
       ${f && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
@@ -473,6 +481,14 @@ const DEFAULT_MODEL = () => ({
   rampDownEnabled: false, rampDownEndPressure: 6, rampDownDuration: 5, folder: 'custom',
 });
 const editor = { editId: null, realPid: null, isLocal: false, model: null };
+let deleteArmed = false;   // two-step delete: first click arms, second deletes (no undo on the machine)
+
+// Lock the whole editor while a write is in flight — edits made mid-save would be
+// silently wiped by the post-save refetch.
+function setEditorBusy(busy) {
+  document.querySelectorAll('#editorModal input, #editorModal textarea, #editorModal button')
+    .forEach(el => { el.disabled = busy; });
+}
 
 function openEditor(editId = null) {
   const p = editId ? PROFILES.find(x => x.id === editId) : null;
@@ -485,9 +501,10 @@ function openEditor(editId = null) {
   if (!Array.isArray(editor.model.infusion) || !editor.model.infusion.length)
     editor.model.infusion = [{ duration: 25, pressure: 9 }];
   $('editorTitle').textContent = editId ? 'Edit profile' : 'New profile';
+  setEditorBusy(false);                                                     // reset after a prior save/delete
+  deleteArmed = false;
   $('edDelete').hidden = !(editId && (editor.isLocal || editor.realPid));   // local custom OR device profile
-  $('edDelete').disabled = false; $('edDelete').textContent = 'Delete';     // reset after a prior delete
-  $('edSave').disabled = false;                                             // reset after a prior save
+  $('edDelete').textContent = 'Delete';
   $('edSave').textContent = isLive ? 'Save to machine' : 'Save';
   $('edError').textContent = '';
   fillForm();
@@ -518,8 +535,8 @@ function renderStages() {
   $('edStages').innerHTML = editor.model.infusion.map((s, i) => `
     <div class="ed-stage" data-i="${i}">
       <span class="ed-stage-n">${i + 1}</span>
-      <input class="ed-st-p" type="number" min="1" max="9" step="0.5" value="${s.pressure}"> bar
-      <input class="ed-st-d" type="number" min="1" max="120" step="1" value="${s.duration}"> s
+      <input class="ed-st-p" type="number" min="1" max="9" step="0.5" value="${esc(s.pressure)}"> bar
+      <input class="ed-st-d" type="number" min="1" max="120" step="1" value="${esc(s.duration)}"> s
       ${editor.model.infusion.length > 1 ? `<button class="ed-st-x" type="button" data-rm="${i}">✕</button>` : ''}
     </div>`).join('');
 }
@@ -608,22 +625,41 @@ async function saveProfile() {
   syncFromForm();
   const errs = validateModel(editor.model);
   if (errs.length) { $('edError').textContent = errs.join(' · '); return; }
-  const btn = $('edSave'); btn.disabled = true; btn.textContent = 'Saving…';
+  const btn = $('edSave'); btn.textContent = 'Saving…';
+  setEditorBusy(true);
   try {
     if (isLive) {
       const dto = buildDTO();
       if (editor.realPid) await fellowUpdateProfile(editor.realPid, dto);   // PATCH existing
       else await fellowCreateProfile(dto);                                  // POST new
-      await loadLiveData();                                                 // refetch from device
+      // The write landed; a failed refetch must not read as a failed save.
+      if (!await loadLiveData()) setDataSrc('saved to machine — refresh failed, reload to see current state');
     } else {
       saveLocalCustom();
     }
     closeEditor();
   } catch (err) {
     $('edError').textContent = 'save failed: ' + (err.message || err);
-    btn.disabled = false; btn.textContent = isLive ? 'Save to machine' : 'Save';
+    setEditorBusy(false);
+    btn.textContent = isLive ? 'Save to machine' : 'Save';
   }
 }
+
+/* ---------- export: JSON backup of everything currently loaded ---------- */
+/* The cloud has no recycle bin and delete is permanent on the machine, so this is
+   the only recovery path. Live profiles export as their full Fellow DTOs (re-creatable
+   via POST); local customs as the mockup's {name, points} shape. */
+$('exportBtn').addEventListener('click', () => {
+  const data = PROFILES.map(p => p.fellow
+    ? { kind: 'fellow', profile: p.fellow }
+    : { kind: 'local', name: p.name, points: p.points, custom: !!p.custom });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `curvia-profiles-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
 
 /* ---------- editor interactions ---------- */
 $('newProfileBtn').addEventListener('click', () => openEditor(null));
@@ -644,15 +680,23 @@ $('editorModal').addEventListener('change', e => {
   syncFromForm(); drawEditorCurve();
 });
 $('edDelete').addEventListener('click', async () => {
+  if (!deleteArmed) {                             // first click arms — delete is permanent, no undo
+    deleteArmed = true;
+    $('edDelete').textContent = 'Confirm delete';
+    return;
+  }
   if (editor.realPid && isLive) {                 // delete a real device profile
-    const btn = $('edDelete'); btn.disabled = true; btn.textContent = 'Deleting…';
+    const btn = $('edDelete'); btn.textContent = 'Deleting…';
+    setEditorBusy(true);
     try {
       await fellowDeleteProfile(editor.realPid);
-      await loadLiveData();
+      if (!await loadLiveData()) setDataSrc('deleted from machine — refresh failed, reload to see current state');
       closeEditor();
     } catch (err) {
       $('edError').textContent = 'delete failed: ' + (err.message || err);
-      btn.disabled = false; btn.textContent = 'Delete';
+      setEditorBusy(false);
+      deleteArmed = false;
+      btn.textContent = 'Delete';
     }
     return;
   }
@@ -766,6 +810,9 @@ async function fellowDeleteProfile(pid) {
   return r.json().catch(() => ({}));
 }
 
+/** Refetch profiles + device state. Returns true when the fetch worked — callers that
+ *  just wrote to the machine use this to tell "saved but refresh failed" apart from
+ *  "save failed" (the write may well have landed even when the refetch doesn't). */
 async function loadLiveData() {
   try {
     const raw = await fellowProfiles();
@@ -780,9 +827,11 @@ async function loadLiveData() {
       setDataSrc(`live · ${real.length} profiles from Fellow Series 1`);
     }
     try { applyDevice(await fellowDevice()); } catch { /* device object is optional */ }
+    return true;
   } catch (e) {
     isLive = false;
     setDataSrc('simulated profiles (offline — run server.mjs or launch the desktop app)');
+    return false;
   }
 }
 

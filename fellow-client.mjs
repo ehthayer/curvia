@@ -34,6 +34,7 @@ loadDotEnv();
 
 const HOST = 'https://l8qtmnc692.execute-api.us-west-2.amazonaws.com';
 const UA = 'Fellow/5 CFNetwork/1568.300.101 Darwin/24.2.0';
+const TIMEOUT_MS = 15_000;   // per request — a stalled connection otherwise hangs the UI forever
 // Credentials: seeded from env (.env / CI for dev + the browser server), or set at
 // runtime via setCredentials() — the desktop app decrypts them from the OS keychain
 // (Electron safeStorage) and calls that. See electron-main.cjs.
@@ -53,6 +54,7 @@ async function login() {
     method: 'POST',
     headers: { 'User-Agent': UA, 'Content-Type': 'application/json' },
     body: JSON.stringify({ email: creds.email, password: creds.password }),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (!r.ok) throw new Error('login HTTP ' + r.status);
   token = (await r.json()).accessToken;
@@ -60,19 +62,25 @@ async function login() {
 
 async function api(path) {
   if (!token) await login();
-  const opts = () => ({ headers: { 'User-Agent': UA, Authorization: 'Bearer ' + token } });
+  const opts = () => ({
+    headers: { 'User-Agent': UA, Authorization: 'Bearer ' + token },
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
   let r = await fetch(HOST + path, opts());
   if (r.status === 401) { await login(); r = await fetch(HOST + path, opts()); } // token expired
   if (!r.ok) throw new Error(path + ' -> HTTP ' + r.status);
   return r.json();
 }
 
-async function soloId() {
-  if (soloIdCache) return soloIdCache;
-  const devs = await api('/v2/devices?dataType=real');
-  const d = devs.find(x => String(x.id).startsWith('FS_') || x.deviceType === 'Solo');
-  if (!d) throw new Error('no Espresso Series 1 (Solo) device on this account');
-  return (soloIdCache = d.id);
+// Cache the in-flight promise (not just the id) so concurrent first calls share
+// one device lookup; drop the cache on failure so the next call can retry.
+function soloId() {
+  return (soloIdCache ??= (async () => {
+    const devs = await api('/v2/devices?dataType=real');
+    const d = devs.find(x => String(x.id).startsWith('FS_') || x.deviceType === 'Solo');
+    if (!d) throw new Error('no Espresso Series 1 (Solo) device on this account');
+    return d.id;
+  })().catch(err => { soloIdCache = null; throw err; }));
 }
 
 async function apiWrite(method, path, body) {
@@ -81,6 +89,7 @@ async function apiWrite(method, path, body) {
     method,
     headers: { 'User-Agent': UA, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   let r = await fetch(HOST + path, opts());
   if (r.status === 401) { await login(); r = await fetch(HOST + path, opts()); } // token expired
@@ -118,7 +127,7 @@ export async function setActiveProfile(profileId) {
 }
 
 /** Create a new profile on the machine (POST). Body = brew-schema DTO (no id).
- *  ⚠ POST not yet verified end-to-end — exercise carefully (reversible create→delete). */
+ *  Verified end-to-end by e2e_test.mjs (create → verify on device → delete). */
 export async function createProfile(dto) {
   requireCreds();
   return apiWrite('POST', `/v2/solo/devices/${await soloId()}/profiles`, dto);

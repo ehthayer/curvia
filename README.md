@@ -14,7 +14,9 @@ notes, set the active profile, and create/edit/delete profiles that sync to the 
 - Profile detail: pressure curve, full recipe (temp/dose/ratio/grind/pre-infusion/infusion/ramp-down),
   declining-temp, roaster, tasting notes, photo, and the **active** profile (★)
 - **Set Active** — changes the machine's active profile (propagates to the front panel)
-- **Create / Edit / Delete** profiles — structured editor with a live curve; saves to the machine
+- **Create / Edit / Delete** profiles — structured editor with a live curve; saves to the machine.
+  Delete is two-step (click → confirm) because the cloud has **no recycle bin** — a deleted profile
+  is gone. Use **Export** (above the list) to download a JSON backup of all profiles first.
 
 ❌ **Not possible (the cloud doesn't expose it — see `FELLOW_API.md`):**
 - **No live telemetry** — the machine syncs nothing during a shot (no temp/pressure/flow/timer)
