@@ -355,7 +355,7 @@ function renderFolders() {
 function renderList() {
   const list = visibleProfiles();
   // keep selection valid for the current filter
-  if (!list.some(p => p.id === state.profile) && list.length) state.profile = list[0].id;
+  if (!list.some(p => p.id === state.profile)) state.profile = list.length ? list[0].id : null;
   $('profiles').innerHTML = list.length ? list.map(p => `
     <div class="pitem ${p.id === state.profile ? 'sel' : ''}" data-id="${p.id}">
       <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${esc(p.name)}</div>

@@ -102,6 +102,27 @@ const [download] = await Promise.all([page.waitForEvent('download'), page.click(
 const fname = download.suggestedFilename();
 check('export downloads a JSON backup', fname.startsWith('curvia-profiles-') && fname.endsWith('.json'));
 
+// 10. empty folder shows the empty detail state, not a stale profile from another folder
+await page.locator('.folder', { hasText: 'Built-in' }).click();
+await page.locator('.pitem').first().click();
+await page.locator('.folder', { hasText: 'Custom' }).click();
+await page.waitForTimeout(100);
+while (await page.locator('.pitem').count()) {            // empty the Custom folder
+  await page.locator('.pitem').first().click();
+  await page.click('#deleteBtn'); await page.click('#deleteBtn');
+  await page.waitForTimeout(100);
+}
+await page.locator('.folder', { hasText: 'Built-in' }).click();
+await page.locator('.folder', { hasText: 'Custom' }).click();
+await page.waitForTimeout(100);
+check('empty folder shows empty detail (no stale profile)',
+  (await page.locator('#detail').textContent()).includes('Select a profile'));
+await page.locator('.folder', { hasText: 'All' }).click();   // no-match search hits the same path
+await page.fill('#search', 'zzz-no-match');
+await page.waitForTimeout(100);
+check('no-match search shows empty detail',
+  (await page.locator('#detail').textContent()).includes('Select a profile'));
+
 await browser.close();
 server.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed');
