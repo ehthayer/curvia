@@ -257,7 +257,6 @@
     </div>
     <div class="ed-error" id="edError"></div>
     <div class="modal-actions">
-      <button class="ghost danger" id="edDelete" hidden>Delete</button>
       <button class="ghost" id="edCancel">Cancel</button>
       <button class="primary" id="edSave">Save to machine</button>
     </div>
@@ -337,6 +336,7 @@ const FOLDERS = [
   { key: 'fellow', label: 'Built-in' },
 ];
 const folderOf = p => (p.fellow && p.fellow.folder) || (p.custom ? 'custom' : 'fellow');
+let deleteArmedId = null;     // two-step delete: id of the profile armed for confirm (no undo on the machine)
 const isActive = p => activeProfileId != null &&
   ((p.fellow && p.fellow.id) === activeProfileId || p.id === activeProfileId);
 const visibleProfiles = () => PROFILES.filter(p =>
@@ -392,6 +392,7 @@ function renderDetail() {
       ${f && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
       ${(p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
       ${f ? '<button class="ghost" id="cloneBtn">Clone</button>' : ''}
+      ${(p.custom || folderOf(p) === 'custom') ? `<button class="ghost danger" id="deleteBtn">${deleteArmedId === p.id ? 'Confirm delete' : 'Delete'}</button>` : ''}
     </div>`;
   drawCurve($('detailCurve'), p.points);
 }
@@ -448,11 +449,38 @@ $('profiles').addEventListener('click', e => {
   const el = e.target.closest('.pitem');
   if (!el) return;
   state.profile = el.dataset.id;
+  deleteArmedId = null;                  // changing selection disarms a pending delete
   renderList(); renderDetail();
 });
 $('detail').addEventListener('click', async e => {
   if (e.target.id === 'editBtn') { openEditor(state.profile); return; }
   if (e.target.id === 'cloneBtn') { openEditor(state.profile, { clone: true }); return; }
+  if (e.target.id === 'deleteBtn') {
+    const p = PROFILES.find(x => x.id === state.profile);
+    if (!p) return;
+    if (deleteArmedId !== p.id) {                 // first click arms — delete is permanent, no undo
+      deleteArmedId = p.id;
+      e.target.textContent = 'Confirm delete';
+      return;
+    }
+    deleteArmedId = null;
+    if (p.fellow && p.fellow.id && isLive) {      // device custom: permanent delete on the machine
+      const btn = e.target; btn.disabled = true; btn.textContent = 'Deleting…';
+      try {
+        await fellowDeleteProfile(p.fellow.id);
+        if (!await loadLiveData()) setDataSrc('deleted from machine — refresh failed, reload to see current state');
+      } catch (err) {
+        setDataSrc('delete failed: ' + (err.message || err));
+        renderDetail();
+      }
+      return;
+    }
+    const idx = PROFILES.findIndex(x => x.id === p.id);   // local custom (localStorage)
+    if (idx >= 0) PROFILES.splice(idx, 1);
+    state.profile = PROFILES[0] && PROFILES[0].id;
+    persistCustoms(); renderAll();
+    return;
+  }
   if (e.target.id === 'setActiveBtn') {
     const p = PROFILES.find(x => x.id === state.profile);
     const pid = (p && p.fellow && p.fellow.id) || state.profile;
@@ -482,8 +510,7 @@ const DEFAULT_MODEL = () => ({
   infusion: [{ duration: 25, pressure: 9 }],
   rampDownEnabled: false, rampDownEndPressure: 6, rampDownDuration: 5, folder: 'custom',
 });
-const editor = { editId: null, realPid: null, isLocal: false, model: null };
-let deleteArmed = false;   // two-step delete: first click arms, second deletes (no undo on the machine)
+const editor = { editId: null, realPid: null, model: null };
 
 // Lock the whole editor while a write is in flight — edits made mid-save would be
 // silently wiped by the post-save refetch.
@@ -496,7 +523,6 @@ function openEditor(editId = null, { clone = false } = {}) {
   const p = editId ? PROFILES.find(x => x.id === editId) : null;
   editor.editId = clone ? null : editId;                                  // a clone saves as a NEW profile
   editor.realPid = (!clone && p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
-  editor.isLocal = !clone && !!(p && p.custom);                           // local custom (localStorage)
   editor.model = p && p.fellow ? structuredClone(p.fellow)
     : p ? { ...DEFAULT_MODEL(), title: p.name }
     : DEFAULT_MODEL();
@@ -513,10 +539,7 @@ function openEditor(editId = null, { clone = false } = {}) {
   if (!Array.isArray(editor.model.infusion) || !editor.model.infusion.length)
     editor.model.infusion = [{ duration: 25, pressure: 9 }];
   $('editorTitle').textContent = clone ? 'Clone profile' : editId ? 'Edit profile' : 'New profile';
-  setEditorBusy(false);                                                     // reset after a prior save/delete
-  deleteArmed = false;
-  $('edDelete').hidden = !(editor.editId && (editor.isLocal || editor.realPid));   // local custom OR device profile
-  $('edDelete').textContent = 'Delete';
+  setEditorBusy(false);                                                     // reset after a prior save
   $('edSave').textContent = isLive ? 'Save to machine' : 'Save';
   $('edError').textContent = tempClamped ? 'note: temperature lowered to 94 °C (machine max)' : '';
   fillForm();
@@ -691,36 +714,6 @@ $('editorModal').addEventListener('change', e => {
   if (e.target.id === 'edPiEnabled' || e.target.id === 'edRdEnabled') toggleRows();
   syncFromForm(); drawEditorCurve();
 });
-$('edDelete').addEventListener('click', async () => {
-  if (!deleteArmed) {                             // first click arms — delete is permanent, no undo
-    deleteArmed = true;
-    $('edDelete').textContent = 'Confirm delete';
-    return;
-  }
-  if (editor.realPid && isLive) {                 // delete a real device profile
-    const btn = $('edDelete'); btn.textContent = 'Deleting…';
-    setEditorBusy(true);
-    try {
-      await fellowDeleteProfile(editor.realPid);
-      if (!await loadLiveData()) setDataSrc('deleted from machine — refresh failed, reload to see current state');
-      closeEditor();
-    } catch (err) {
-      $('edError').textContent = 'delete failed: ' + (err.message || err);
-      setEditorBusy(false);
-      deleteArmed = false;
-      btn.textContent = 'Delete';
-    }
-    return;
-  }
-  if (editor.editId) {                            // delete a local custom
-    const idx = PROFILES.findIndex(p => p.id === editor.editId);
-    if (idx >= 0) PROFILES.splice(idx, 1);
-    if (state.profile === editor.editId) state.profile = PROFILES[0] && PROFILES[0].id;
-    persistCustoms(); renderAll();
-  }
-  closeEditor();
-});
-
 /* ------------------------------------------------------------------ */
 /* Live data: real Fellow Espresso Series 1 profiles via local proxy   */
 /* (server.mjs). Falls back to the simulated profiles above when the   */

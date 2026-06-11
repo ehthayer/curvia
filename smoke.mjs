@@ -74,26 +74,28 @@ await page.click('#cloneBtn');
 check('clone opens editor', await page.locator('#editorModal').isVisible());
 check('clone editor titled "Clone profile"', (await page.locator('#editorTitle').textContent()) === 'Clone profile');
 check('clone prefills name with (copy)', (await page.inputValue('#edName')) === 'Playwright Test (copy)');
-check('clone hides delete (nothing to delete yet)', await page.locator('#edDelete').isHidden());
 await page.fill('#edName', 'Cloned Shot');
 await page.click('#edSave');
 check('cloned profile in list', (await page.locator('.pitem', { hasText: 'Cloned Shot' }).count()) === 1);
 check('original survives clone', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
-await page.click('#editBtn');                       // clone is selected after save; clean it up
-await page.click('#edDelete'); await page.click('#edDelete');
+await page.click('#deleteBtn'); await page.click('#deleteBtn');   // clone is selected after save; clean it up
 check('clone cleanup deleted', (await page.locator('.pitem', { hasText: 'Cloned Shot' }).count()) === 0);
 
-// 8. select → edit from detail → delete (two-step: first click arms, second deletes)
+// 8. select → delete from detail (two-step: first click arms, second deletes)
 await page.locator('.pitem', { hasText: 'Playwright Test' }).click();
 await page.screenshot({ path: 'shots/manager.png' });
 await page.click('#editBtn');
 check('edit opens editor prefilled', (await page.inputValue('#edName')) === 'Playwright Test');
+check('editor has no delete (lives on the detail view)', (await page.locator('#edDelete').count()) === 0);
 await page.screenshot({ path: 'shots/editor.png' });
-await page.click('#edDelete');
-check('first delete click arms confirmation', (await page.locator('#edDelete').textContent()) === 'Confirm delete');
+await page.click('#edCancel');
+await page.click('#deleteBtn');
+check('first delete click arms confirmation', (await page.locator('#deleteBtn').textContent()) === 'Confirm delete');
 check('profile not deleted before confirm', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
-await page.click('#edDelete');
+await page.click('#deleteBtn');
 check('deleted profile removed', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 0);
+await page.locator('.pitem').first().click();       // first item is a built-in (Classic 9-bar)
+check('built-in detail has no delete', (await page.locator('#deleteBtn').count()) === 0);
 
 // 9. export downloads a JSON backup
 const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportBtn')]);
