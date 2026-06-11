@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Curvia</title>
+<style>
+  :root {
+    --bg: #0e0e10;
+    --panel: #17171a;
+    --panel-2: #1d1d21;
+    --line: #2a2a30;
+    --text: #f2f0ec;
+    --muted: #8e8c87;
+    --accent: #e8d5b5;      /* warm latte */
+    --accent-2: #c9a36a;    /* crema gold */
+    --good: #7fb78a;
+    --warn: #d9a25f;
+    --hot: #d96a5f;
+    --radius: 14px;
+    font-size: 15px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Helvetica Neue", Inter, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: 0.01em;
+  }
+  .app {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 28px 24px 60px;
+  }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-bottom: 22px; border-bottom: 1px solid var(--line);
+    margin-bottom: 26px;
+  }
+  .brand { display: flex; align-items: baseline; gap: 12px; }
+  .brand h1 {
+    font-size: 1.15rem; font-weight: 600; letter-spacing: 0.22em;
+    text-transform: uppercase;
+  }
+  .brand .model { color: var(--muted); font-size: 0.8rem; letter-spacing: 0.18em; text-transform: uppercase; }
+  .conn { display: flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--muted); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .dot.off { background: var(--muted); box-shadow: none; }
+
+  /* ---------- buttons ---------- */
+  button {
+    font: inherit; cursor: pointer; border-radius: 10px;
+    border: 1px solid var(--line); background: var(--panel-2); color: var(--text);
+    padding: 12px 18px; font-size: 0.85rem; letter-spacing: 0.06em;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+  }
+  button:hover { background: #26262b; border-color: #3a3a42; }
+  button:active { transform: scale(0.985); }
+  button.primary {
+    background: var(--accent); color: #161410; border-color: var(--accent);
+    font-weight: 600; padding: 12px 28px; text-transform: uppercase; letter-spacing: 0.14em;
+  }
+  button.primary:hover { background: #f1e2c8; }
+  button.ghost { background: transparent; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---------- profile manager (folders | list | detail) ---------- */
+  .manager { display: grid; grid-template-columns: 190px 290px 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 920px) { .manager { grid-template-columns: 1fr; } }
+  .folders { display: flex; flex-direction: column; gap: 4px; }
+  .folder { display: flex; justify-content: space-between; align-items: center;
+    padding: 9px 12px; border-radius: 10px; cursor: pointer; color: var(--muted);
+    font-size: 0.85rem; border: 1px solid transparent; }
+  .folder:hover { background: var(--panel-2); }
+  .folder.sel { background: #211d16; border-color: var(--accent-2); color: var(--text); }
+  .folder .count { font-size: 0.72rem; opacity: 0.7; font-variant-numeric: tabular-nums; }
+  .list-head { display: flex; gap: 8px; margin-bottom: 10px; }
+  .list-head .search { flex: 1; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; color: var(--text); padding: 9px 12px; font: inherit; font-size: 0.83rem; }
+  .list-head .search:focus { outline: none; border-color: var(--accent-2); }
+  .plist { display: flex; flex-direction: column; gap: 6px; max-height: 76vh; overflow-y: auto; padding-right: 2px; }
+  .pitem { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line);
+    background: var(--panel-2); cursor: pointer; transition: border-color 0.15s ease; }
+  .pitem:hover { border-color: #3a3a42; }
+  .pitem.sel { border-color: var(--accent-2); background: #211d16; }
+  .pitem .pname { font-size: 0.86rem; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+  .pitem .pmeta { font-size: 0.7rem; color: var(--muted); margin-top: 3px; }
+  .star { color: var(--accent-2); }
+  .detail { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel);
+    padding: 22px; min-height: 360px; }
+  .detail .dtitle { font-size: 1.3rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+  .detail .dsub { color: var(--muted); font-size: 0.82rem; margin: 4px 0 14px; text-transform: capitalize; }
+  .active-badge { font-size: 0.6rem; color: var(--good); border: 1px solid var(--good);
+    border-radius: 999px; padding: 2px 9px; letter-spacing: 0.1em; text-transform: uppercase; }
+  .detail canvas { width: 100%; height: 180px; display: block; }
+  .detail .params { display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 10px; margin: 16px 0; }
+  .detail .param { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; }
+  .detail .param .k { font-size: 0.6rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.12em; }
+  .detail .param .v { font-size: 1.02rem; font-variant-numeric: tabular-nums; margin-top: 3px; }
+  .detail .notes { font-size: 0.82rem; color: var(--muted); line-height: 1.5; white-space: pre-wrap;
+    max-height: 8em; overflow-y: auto; margin-top: 6px; }
+  .detail .dactions { display: flex; gap: 10px; margin-top: 18px; }
+  .detail .photo { float: right; width: 92px; height: 92px; border-radius: 12px; object-fit: cover;
+    margin: 0 0 8px 16px; border: 1px solid var(--line); }
+  .detail .empty { color: var(--muted); text-align: center; padding-top: 90px; }
+
+  /* ---------- structured profile editor ---------- */
+  .modal.editor { max-width: 560px; }
+  #editorCurve { width: 100%; height: 120px; display: block; margin-bottom: 14px; }
+  .ed-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  .ed-grid label, .ed-row label { display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.62rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .ed-grid input, .ed-row input { font: inherit; font-size: 0.9rem; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 7px 9px; width: 100%; }
+  .ed-grid input:focus, .ed-row input:focus, .ed-stage input:focus { outline: none; border-color: var(--accent-2); }
+  .ed-block { border-top: 1px solid var(--line); padding-top: 12px; margin-bottom: 12px; }
+  .ed-toggle { display: flex; align-items: center; gap: 8px; font-size: 0.82rem; cursor: pointer; margin-bottom: 10px; }
+  .ed-block-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem; margin-bottom: 10px; }
+  .ed-row { display: flex; gap: 10px; }
+  .ed-row label { flex: 1; }
+  .ed-stage { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 0.74rem; color: var(--muted); }
+  .ed-stage-n { width: 18px; height: 18px; border-radius: 50%; background: var(--panel-2); border: 1px solid var(--line);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 0.68rem; color: var(--accent); flex: none; }
+  .ed-stage input { width: 60px; font: inherit; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; color: var(--text); padding: 6px 8px; }
+  .ed-st-x { background: none; border: none; color: var(--hot); cursor: pointer; padding: 2px 6px; font-size: 0.85rem; margin-left: auto; }
+  .ed-error { color: var(--hot); font-size: 0.76rem; min-height: 1em; margin-bottom: 8px; }
+  .ed-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.62rem; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .ed-field input, .ed-field textarea { font: inherit; font-size: 0.88rem; background: var(--panel-2);
+    border: 1px solid var(--line); border-radius: 8px; color: var(--text); padding: 8px 10px; }
+  .ed-field input:focus, .ed-field textarea:focus { outline: none; border-color: var(--accent-2); }
+  .ed-field textarea { resize: vertical; }
+
+  /* power toggle */
+  .toggle {
+    position: relative; width: 46px; height: 26px; border-radius: 999px;
+    background: var(--line); cursor: pointer; transition: background 0.2s ease; border: none; padding: 0;
+  }
+  .toggle::after {
+    content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+    border-radius: 50%; background: var(--text); transition: left 0.2s ease;
+  }
+  .toggle.on { background: var(--good); }
+  .toggle.on::after { left: 23px; }
+  .toggle:hover { background: #3a3a42; }
+  .toggle.on:hover { background: var(--good); }
+
+  footer { margin-top: 28px; text-align: center; color: var(--muted); font-size: 0.7rem; letter-spacing: 0.1em; }
+
+  /* ---------- mini button + modal ---------- */
+  .mini-btn {
+    padding: 6px 12px; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--accent-2); border-color: var(--accent-2); background: transparent;
+  }
+  .mini-btn:hover { background: #211d16; border-color: var(--accent-2); }
+
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(8, 8, 10, 0.72);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+    backdrop-filter: blur(3px); padding: 20px;
+  }
+  .modal-backdrop[hidden] { display: none; }
+  .modal {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 22px; width: min(720px, 100%); max-height: 92vh; overflow-y: auto;
+  }
+  .modal h2 {
+    font-size: 0.72rem; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: 0.2em; margin-bottom: 14px;
+  }
+  .modal input[type=text], .modal input[type=email], .modal input[type=password] {
+    font: inherit; width: 100%; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 10px; color: var(--text); padding: 11px 14px; margin-bottom: 14px;
+    font-size: 0.95rem;
+  }
+  .modal input[type=text]:focus, .modal input[type=email]:focus, .modal input[type=password]:focus { outline: none; border-color: var(--accent-2); }
+  .si-note { font-size: 0.8rem; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+  .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  button.danger { color: var(--hot); border-color: #4a2a27; }
+  button.danger:hover { background: #2a1c1a; border-color: var(--hot); }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header>
+    <div class="brand">
+      <h1>Curvia</h1>
+      <span class="model">Espresso Series 1</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div class="conn"><span class="dot" id="connDot"></span><span id="connLabel">Connected · Wi-Fi</span></div>
+      <button class="mini-btn" id="signOutBtn" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <div class="manager">
+    <!-- folders -->
+    <aside class="folders" id="folders"></aside>
+
+    <!-- list + search -->
+    <div class="list-col">
+      <div class="list-head">
+        <input class="search" id="search" type="text" placeholder="Search profiles…" />
+        <button class="mini-btn" id="newProfileBtn">+ New</button>
+      </div>
+      <div class="plist" id="profiles"></div>
+    </div>
+
+    <!-- detail -->
+    <div class="detail" id="detail"></div>
+  </div>
+
+  <footer>CURVIA · <span id="dataSrc">simulated profiles</span> · set-active works · no live telemetry/brew · NOT AFFILIATED WITH FELLOW</footer>
+</div>
+
+<div class="modal-backdrop" id="editorModal" hidden>
+  <div class="modal editor">
+    <h2 id="editorTitle">Edit profile</h2>
+    <input type="text" id="edName" placeholder="Profile name" maxlength="50" />
+    <canvas id="editorCurve" width="640" height="150"></canvas>
+    <div class="ed-grid">
+      <label>Temp °C<input type="number" id="edTemp" min="50" max="94" step="0.5"></label>
+      <label>Dose g<input type="number" id="edDose" min="6" max="30" step="0.5"></label>
+      <label>Ratio 1:<input type="number" id="edRatio" min="1" max="5" step="0.5"></label>
+      <label>Grind<input type="number" id="edGrind" min="0" max="10" step="0.1"></label>
+    </div>
+    <label class="ed-toggle" style="margin-bottom:14px"><input type="checkbox" id="edDeclining"> Declining temperature</label>
+    <div class="ed-block">
+      <label class="ed-toggle"><input type="checkbox" id="edPiEnabled"> Pre-infusion</label>
+      <div class="ed-row" id="edPiRow">
+        <label>Hold bar<input type="number" id="edPiHold" min="1" max="9" step="0.5"></label>
+        <label>Fill flow<input type="number" id="edPiFlow" min="0" max="10" step="0.5"></label>
+        <label>Duration s<input type="number" id="edPiDur" min="1" max="60" step="1"></label>
+      </div>
+    </div>
+    <div class="ed-block">
+      <div class="ed-block-head"><span>Infusion stages</span><button class="mini-btn" type="button" id="edAddStage">+ stage</button></div>
+      <div id="edStages"></div>
+    </div>
+    <div class="ed-block">
+      <label class="ed-toggle"><input type="checkbox" id="edRdEnabled"> Ramp-down</label>
+      <div class="ed-row" id="edRdRow">
+        <label>End bar<input type="number" id="edRdEnd" min="1" max="9" step="0.5"></label>
+        <label>Duration s<input type="number" id="edRdDur" min="1" max="60" step="1"></label>
+      </div>
+    </div>
+    <div class="ed-block">
+      <label class="ed-field">Roaster (optional)<input type="text" id="edRoaster" maxlength="60"></label>
+      <label class="ed-field">Notes (optional)<textarea id="edNotes" rows="3" maxlength="2000"></textarea></label>
+    </div>
+    <div class="ed-error" id="edError"></div>
+    <div class="modal-actions">
+      <button class="ghost danger" id="edDelete" hidden>Delete</button>
+      <button class="ghost" id="edCancel">Cancel</button>
+      <button class="primary" id="edSave">Save to machine</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="signinModal" hidden>
+  <div class="modal" style="max-width: 380px">
+    <h2>Sign in to Curvia</h2>
+    <p class="si-note">Your Fellow account. Stored encrypted in your device keychain — the password never touches disk in plaintext.</p>
+    <input type="email" id="siEmail" placeholder="Email" autocomplete="username" />
+    <input type="password" id="siPassword" placeholder="Password" autocomplete="current-password" />
+    <div class="ed-error" id="siError"></div>
+    <div class="modal-actions">
+      <button class="primary" id="siSubmit">Sign in</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ------------------------------------------------------------------ */
+/* Read-only viewer: real Series 1 profiles (via proxy / Electron IPC) */
+/* plus a static pressure-curve preview. The machine exposes no live   */
+/* telemetry or remote control (see FELLOW_API.md §6/§7), so there is   */
+/* deliberately no simulated shot, gauges, history, or steam here.     */
+/* ------------------------------------------------------------------ */
+const state = { profile: 'classic', folder: 'all', query: '' };
+
+/* Every profile is a pressure curve: ordered {t (s), p (bar)} points.
+   Linear interpolation between points; last point = end of shot. */
+const PROFILES = [
+  { id: 'classic', name: 'Classic 9-bar', meta: '6 s soak · 9 bar · ~30 s',
+    points: [{t:0,p:2},{t:6,p:3},{t:9,p:9},{t:20,p:9},{t:30,p:7.5}] },
+  { id: 'turbo',   name: 'Turbo',          meta: '4 s soak · 6 bar · ~17 s',
+    points: [{t:0,p:2},{t:4,p:3},{t:6,p:6},{t:17,p:6}] },
+  { id: 'lungo',   name: 'Gentle Lungo',   meta: '8 s soak · 7.5 bar · ~40 s',
+    points: [{t:0,p:1.5},{t:8,p:2.5},{t:13,p:7.5},{t:25,p:7.5},{t:40,p:5.5}] },
+];
+
+const STORAGE_KEY = 'fellow-custom-profiles';
+try {
+  const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+  saved.forEach(p => PROFILES.push(p));
+} catch (e) { /* corrupt storage — start clean */ }
+if (!PROFILES.some(p => p.custom)) {
+  PROFILES.push({ id: 'morning', name: 'My Morning Shot', custom: true, badge: 'Custom',
+    meta: '6 s soak · 8.5 bar · ~30 s',
+    points: [{t:0,p:2},{t:6,p:3},{t:10,p:8.5},{t:22,p:8.5},{t:30,p:6.5}] });
+}
+
+function persistCustoms() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(PROFILES.filter(p => p.custom)));
+}
+
+function profileMeta(points) {
+  const soakEnd = points.findIndex(pt => pt.p > 3.5);
+  const soak = soakEnd > 0 ? Math.round(points[soakEnd - 1].t) : 0;
+  const peak = Math.max(...points.map(pt => pt.p));
+  const dur = Math.round(points[points.length - 1].t);
+  return `${soak} s soak · ${peak.toFixed(1).replace('.0','')} bar · ~${dur} s`;
+}
+
+const $ = id => document.getElementById(id);
+
+/* ---------- profile manager: folders | list | detail ---------- */
+let activeProfileId = null;   // which profile the machine has active (from the device object)
+const FOLDERS = [
+  { key: 'all',    label: 'All' },
+  { key: 'drops',  label: 'Drops' },
+  { key: 'custom', label: 'Custom' },
+  { key: 'fellow', label: 'Built-in' },
+];
+const folderOf = p => (p.fellow && p.fellow.folder) || (p.custom ? 'custom' : 'fellow');
+const isActive = p => activeProfileId != null &&
+  ((p.fellow && p.fellow.id) === activeProfileId || p.id === activeProfileId);
+const visibleProfiles = () => PROFILES.filter(p =>
+  (state.folder === 'all' || folderOf(p) === state.folder) &&
+  (!state.query || p.name.toLowerCase().includes(state.query)));
+
+function renderFolders() {
+  const counts = { all: PROFILES.length };
+  PROFILES.forEach(p => { const f = folderOf(p); counts[f] = (counts[f] || 0) + 1; });
+  $('folders').innerHTML = FOLDERS.map(f => `
+    <div class="folder ${state.folder === f.key ? 'sel' : ''}" data-folder="${f.key}">
+      <span>${f.label}</span><span class="count">${counts[f.key] || 0}</span>
+    </div>`).join('');
+}
+
+function renderList() {
+  const list = visibleProfiles();
+  // keep selection valid for the current filter
+  if (!list.some(p => p.id === state.profile) && list.length) state.profile = list[0].id;
+  $('profiles').innerHTML = list.length ? list.map(p => `
+    <div class="pitem ${p.id === state.profile ? 'sel' : ''}" data-id="${p.id}">
+      <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${p.name}</div>
+      <div class="pmeta">${p.meta}</div>
+    </div>`).join('') : '<div class="pmeta" style="padding:10px">No profiles match.</div>';
+}
+
+function renderDetail() {
+  const el = $('detail');
+  const p = PROFILES.find(x => x.id === state.profile);
+  if (!p) { el.innerHTML = '<div class="empty">Select a profile.</div>'; return; }
+  const f = p.fellow;
+  const photo = f && f.imageUrl ? `<img class="photo" src="${f.imageUrl}" alt="" onerror="this.remove()">` : '';
+  const sub = f ? [f.roasterName, f.folder].filter(Boolean).join(' · ') : (p.custom ? 'custom · local' : 'built-in');
+  const param = (k, v) => `<div class="param"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+  const params = f ? [
+    param('Temp', f.temperature != null ? f.temperature + ' °C' : '—'),
+    param('Dose', f.dose != null ? f.dose + ' g' : '—'),
+    param('Ratio', f.ratio != null ? '1 : ' + f.ratio : '—'),
+    param('Yield', (f.dose && f.ratio) ? Math.round(f.dose * f.ratio) + ' g' : '—'),
+    param('Grind', f.grindSize != null ? String(f.grindSize) : '—'),
+    param('Pre-inf', f.preInfusionEnabled ? `${f.preInfusionHoldPressure} bar · ${f.preInfusionDuration}s` : 'off'),
+  ].join('') : param('Peak', Math.max(...p.points.map(pt => pt.p)).toFixed(1).replace('.0', '') + ' bar');
+  el.innerHTML = `
+    ${photo}
+    <div class="dtitle">${p.name}${isActive(p) ? ' <span class="active-badge">★ Active</span>' : ''}</div>
+    <div class="dsub">${sub || '—'}</div>
+    <canvas id="detailCurve" width="560" height="200"></canvas>
+    <div class="params">${params}</div>
+    ${f && f.notes ? `<div class="notes">${f.notes}</div>` : ''}
+    <div class="dactions">
+      ${f && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
+      ${f && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
+      ${(p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
+    </div>`;
+  drawCurve($('detailCurve'), p.points);
+}
+
+function curveAt(points, t) {
+  if (t <= points[0].t) return points[0].p;
+  for (let i = 1; i < points.length; i++) {
+    if (t <= points[i].t) {
+      const a = points[i - 1], b = points[i];
+      return a.p + (b.p - a.p) * ((t - a.t) / ((b.t - a.t) || 1));
+    }
+  }
+  return points[points.length - 1].p;
+}
+
+/* Static pressure-vs-time curve for a profile (target shape, not live data). */
+function drawCurve(cv, pts) {
+  if (!cv || !pts || !pts.length) return;
+  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = '#2a2a30'; ctx.lineWidth = 1; ctx.font = '10px sans-serif'; ctx.fillStyle = '#8e8c87';
+  for (let bar = 0; bar <= 10; bar += 2) {
+    const y = h - (bar / 10) * (h - 26) - 16;
+    ctx.beginPath(); ctx.moveTo(28, y); ctx.lineTo(w, y); ctx.stroke(); ctx.fillText(bar, 8, y + 3);
+  }
+  const tMax = Math.max(20, pts[pts.length - 1].t);
+  const x = t => 28 + (t / tMax) * (w - 36);
+  const yP = v => h - (v / 10) * (h - 26) - 16;
+  const trace = () => {
+    ctx.beginPath(); ctx.moveTo(x(0), yP(curveAt(pts, 0)));
+    for (let t = 0; t <= tMax; t += 0.5) ctx.lineTo(x(t), yP(curveAt(pts, t)));
+  };
+  trace(); ctx.lineTo(x(tMax), yP(0)); ctx.lineTo(x(0), yP(0)); ctx.closePath();
+  ctx.fillStyle = 'rgba(201,163,106,0.10)'; ctx.fill();
+  trace(); ctx.strokeStyle = '#c9a36a'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.fillStyle = '#8e8c87';
+  for (let t = 0; t <= tMax; t += 10) ctx.fillText(t + 's', x(t) - 6, h - 3);
+}
+
+function renderAll() { renderFolders(); renderList(); renderDetail(); }
+
+/* ---------- interactions ---------- */
+$('folders').addEventListener('click', e => {
+  const f = e.target.closest('[data-folder]');
+  if (!f) return;
+  state.folder = f.dataset.folder;
+  renderFolders(); renderList(); renderDetail();
+});
+$('search').addEventListener('input', e => {
+  state.query = e.target.value.trim().toLowerCase();
+  renderList(); renderDetail();
+});
+$('profiles').addEventListener('click', e => {
+  const el = e.target.closest('.pitem');
+  if (!el) return;
+  state.profile = el.dataset.id;
+  renderList(); renderDetail();
+});
+$('detail').addEventListener('click', async e => {
+  if (e.target.id === 'editBtn') { openEditor(state.profile); return; }
+  if (e.target.id === 'setActiveBtn') {
+    const p = PROFILES.find(x => x.id === state.profile);
+    const pid = (p && p.fellow && p.fellow.id) || state.profile;
+    const btn = e.target; btn.disabled = true; btn.textContent = 'Setting…';
+    try {
+      await fellowSetActive(pid);          // PATCH …/active-profile via proxy / IPC
+      activeProfileId = pid;               // optimistic; machine confirms on next device read
+      renderList(); renderDetail();
+    } catch (err) {
+      btn.disabled = false; btn.textContent = 'Set Active';
+      setDataSrc('set active failed: ' + err.message);
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Structured profile editor — recipe + pre-infusion + infusion[] +    */
+/* ramp-down, with a live curve preview. Save: PATCH (edit a device     */
+/* profile) / POST (new) when live; localStorage custom when offline.   */
+/* ------------------------------------------------------------------ */
+let isLive = false;   // set true once real profiles load (see loadLiveData)
+const numf = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+const DEFAULT_MODEL = () => ({
+  title: '', temperature: 93, dose: 18, ratio: 2, grindSize: 2,
+  transition: 'smooth', adaptive: false, decliningTemp: 'off',
+  preInfusionEnabled: true, preInfusionHoldPressure: 3, preInfusionFillFlowRate: 4.5, preInfusionDuration: 5,
+  infusion: [{ duration: 25, pressure: 9 }],
+  rampDownEnabled: false, rampDownEndPressure: 6, rampDownDuration: 5, folder: 'custom',
+});
+const editor = { editId: null, realPid: null, isLocal: false, model: null };
+
+function openEditor(editId = null) {
+  const p = editId ? PROFILES.find(x => x.id === editId) : null;
+  editor.editId = editId;
+  editor.realPid = (p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
+  editor.isLocal = !!(p && p.custom);                                     // local custom (localStorage)
+  editor.model = p && p.fellow ? structuredClone(p.fellow)
+    : p ? { ...DEFAULT_MODEL(), title: p.name }
+    : DEFAULT_MODEL();
+  if (!Array.isArray(editor.model.infusion) || !editor.model.infusion.length)
+    editor.model.infusion = [{ duration: 25, pressure: 9 }];
+  $('editorTitle').textContent = editId ? 'Edit profile' : 'New profile';
+  $('edDelete').hidden = !(editId && (editor.isLocal || editor.realPid));   // local custom OR device profile
+  $('edDelete').disabled = false; $('edDelete').textContent = 'Delete';     // reset after a prior delete
+  $('edSave').disabled = false;                                             // reset after a prior save
+  $('edSave').textContent = isLive ? 'Save to machine' : 'Save';
+  $('edError').textContent = '';
+  fillForm();
+  $('editorModal').hidden = false;
+}
+function closeEditor() { $('editorModal').hidden = true; }
+
+function fillForm() {
+  const m = editor.model;
+  $('edName').value = m.title || '';
+  $('edTemp').value = m.temperature; $('edDose').value = m.dose; $('edRatio').value = m.ratio; $('edGrind').value = m.grindSize;
+  $('edPiEnabled').checked = !!m.preInfusionEnabled;
+  $('edPiHold').value = m.preInfusionHoldPressure ?? 3;
+  $('edPiFlow').value = m.preInfusionFillFlowRate ?? 4.5;
+  $('edPiDur').value = m.preInfusionDuration ?? 5;
+  $('edRdEnabled').checked = !!m.rampDownEnabled;
+  $('edRdEnd').value = m.rampDownEndPressure ?? 6;
+  $('edRdDur').value = m.rampDownDuration ?? 5;
+  $('edDeclining').checked = m.decliningTemp === 'on';
+  $('edRoaster').value = m.roasterName || '';
+  $('edNotes').value = m.notes || '';
+  renderStages();
+  toggleRows();
+  drawEditorCurve();
+}
+
+function renderStages() {
+  $('edStages').innerHTML = editor.model.infusion.map((s, i) => `
+    <div class="ed-stage" data-i="${i}">
+      <span class="ed-stage-n">${i + 1}</span>
+      <input class="ed-st-p" type="number" min="1" max="9" step="0.5" value="${s.pressure}"> bar
+      <input class="ed-st-d" type="number" min="1" max="120" step="1" value="${s.duration}"> s
+      ${editor.model.infusion.length > 1 ? `<button class="ed-st-x" type="button" data-rm="${i}">✕</button>` : ''}
+    </div>`).join('');
+}
+
+function syncFromForm() {
+  const m = editor.model;
+  m.title = $('edName').value;
+  m.temperature = numf($('edTemp').value); m.dose = numf($('edDose').value);
+  m.ratio = numf($('edRatio').value); m.grindSize = numf($('edGrind').value);
+  m.preInfusionEnabled = $('edPiEnabled').checked;
+  m.preInfusionHoldPressure = numf($('edPiHold').value);
+  m.preInfusionFillFlowRate = numf($('edPiFlow').value);
+  m.preInfusionDuration = numf($('edPiDur').value);
+  m.rampDownEnabled = $('edRdEnabled').checked;
+  m.rampDownEndPressure = numf($('edRdEnd').value);
+  m.rampDownDuration = numf($('edRdDur').value);
+  m.decliningTemp = $('edDeclining').checked ? 'on' : 'off';
+  m.roasterName = $('edRoaster').value.trim() || null;
+  m.notes = $('edNotes').value.trim() || null;
+  m.infusion = [...$('edStages').querySelectorAll('.ed-stage')].map(row => ({
+    pressure: numf(row.querySelector('.ed-st-p').value),
+    duration: numf(row.querySelector('.ed-st-d').value),
+  }));
+  if (!m.infusion.length) m.infusion = [{ duration: 25, pressure: 9 }];
+}
+
+function toggleRows() {
+  $('edPiRow').style.display = $('edPiEnabled').checked ? '' : 'none';
+  $('edRdRow').style.display = $('edRdEnabled').checked ? '' : 'none';
+}
+function drawEditorCurve() { drawCurve($('editorCurve'), fellowToPoints(editor.model)); }
+
+function validateModel(m) {
+  const e = [];
+  if (!String(m.title).trim()) e.push('name required');
+  if (!(m.temperature >= 50 && m.temperature <= 94)) e.push('temp 50–94°C');
+  if (!(m.dose >= 6 && m.dose <= 30)) e.push('dose 6–30g');
+  if (!(m.ratio > 0 && m.ratio <= 5)) e.push('ratio ≤5');
+  if (!(m.grindSize >= 0 && m.grindSize <= 10)) e.push('grind ≤10');
+  m.infusion.forEach((s, i) => {
+    if (!(s.pressure > 0 && s.pressure <= 9)) e.push(`stage ${i + 1}: 1–9 bar`);
+    if (!(s.duration > 0 && s.duration <= 120)) e.push(`stage ${i + 1}: 1–120 s`);
+  });
+  if (m.rampDownEnabled && !(m.rampDownEndPressure > 0 && m.rampDownEndPressure <= 9)) e.push('ramp-down 1–9 bar');
+  return e;
+}
+
+// Brew-schema DTO only (server uses forbidNonWhitelisted; omit id + read-only metadata).
+function buildDTO() {
+  const m = editor.model;
+  return {
+    title: String(m.title).trim(),
+    grindSize: m.grindSize, dose: m.dose, ratio: m.ratio, temperature: m.temperature,
+    transition: m.transition || 'smooth', adaptive: !!m.adaptive, decliningTemp: m.decliningTemp || 'off',
+    preInfusionEnabled: !!m.preInfusionEnabled,
+    preInfusionHoldPressure: m.preInfusionEnabled ? m.preInfusionHoldPressure : null,
+    preInfusionFillFlowRate: m.preInfusionEnabled ? m.preInfusionFillFlowRate : null,
+    preInfusionDuration: m.preInfusionEnabled ? m.preInfusionDuration : null,
+    infusion: m.infusion.map(s => ({ duration: s.duration, pressure: s.pressure })),
+    rampDownEnabled: !!m.rampDownEnabled,
+    rampDownEndPressure: m.rampDownEndPressure, rampDownDuration: m.rampDownDuration,
+    folder: m.folder || 'custom',
+    roasterName: m.roasterName ?? null,
+    notes: m.notes ?? null,
+    settingsVersion: Math.floor(Date.now() / 1000),
+  };
+}
+
+function saveLocalCustom() {
+  const m = editor.model;
+  const points = fellowToPoints(m);
+  const data = { name: String(m.title || 'Untitled').trim(), points, meta: profileMeta(points),
+                 fellow: { ...m, folder: 'custom' }, custom: true };
+  if (editor.editId) {
+    const p = PROFILES.find(x => x.id === editor.editId);
+    Object.assign(p, data); state.profile = p.id;
+  } else {
+    data.id = 'u' + Date.now().toString(36);
+    PROFILES.push(data); state.profile = data.id;
+  }
+  persistCustoms();
+  renderAll();
+}
+
+async function saveProfile() {
+  syncFromForm();
+  const errs = validateModel(editor.model);
+  if (errs.length) { $('edError').textContent = errs.join(' · '); return; }
+  const btn = $('edSave'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    if (isLive) {
+      const dto = buildDTO();
+      if (editor.realPid) await fellowUpdateProfile(editor.realPid, dto);   // PATCH existing
+      else await fellowCreateProfile(dto);                                  // POST new
+      await loadLiveData();                                                 // refetch from device
+    } else {
+      saveLocalCustom();
+    }
+    closeEditor();
+  } catch (err) {
+    $('edError').textContent = 'save failed: ' + (err.message || err);
+    btn.disabled = false; btn.textContent = isLive ? 'Save to machine' : 'Save';
+  }
+}
+
+/* ---------- editor interactions ---------- */
+$('newProfileBtn').addEventListener('click', () => openEditor(null));
+$('edCancel').addEventListener('click', closeEditor);
+$('editorModal').addEventListener('click', e => { if (e.target === $('editorModal')) closeEditor(); });
+$('edSave').addEventListener('click', saveProfile);
+$('edAddStage').addEventListener('click', () => {
+  syncFromForm(); editor.model.infusion.push({ duration: 10, pressure: 6 }); renderStages(); drawEditorCurve();
+});
+$('edStages').addEventListener('click', e => {
+  const rm = e.target.closest('[data-rm]');
+  if (!rm) return;
+  syncFromForm(); editor.model.infusion.splice(+rm.dataset.rm, 1); renderStages(); drawEditorCurve();
+});
+$('editorModal').addEventListener('input', () => { syncFromForm(); drawEditorCurve(); });
+$('editorModal').addEventListener('change', e => {
+  if (e.target.id === 'edPiEnabled' || e.target.id === 'edRdEnabled') toggleRows();
+  syncFromForm(); drawEditorCurve();
+});
+$('edDelete').addEventListener('click', async () => {
+  if (editor.realPid && isLive) {                 // delete a real device profile
+    const btn = $('edDelete'); btn.disabled = true; btn.textContent = 'Deleting…';
+    try {
+      await fellowDeleteProfile(editor.realPid);
+      await loadLiveData();
+      closeEditor();
+    } catch (err) {
+      $('edError').textContent = 'delete failed: ' + (err.message || err);
+      btn.disabled = false; btn.textContent = 'Delete';
+    }
+    return;
+  }
+  if (editor.editId) {                            // delete a local custom
+    const idx = PROFILES.findIndex(p => p.id === editor.editId);
+    if (idx >= 0) PROFILES.splice(idx, 1);
+    if (state.profile === editor.editId) state.profile = PROFILES[0] && PROFILES[0].id;
+    persistCustoms(); renderAll();
+  }
+  closeEditor();
+});
+
+/* ------------------------------------------------------------------ */
+/* Live data: real Fellow Espresso Series 1 profiles via local proxy   */
+/* (server.mjs). Falls back to the simulated profiles above when the   */
+/* proxy/creds aren't available (e.g. opened as a static file).        */
+/* NOTE: live shot telemetry (temp/pressure/flow) has NO client API —  */
+/* the shot below is a SIMULATED playback of the real profile's curve. */
+/* ------------------------------------------------------------------ */
+
+// Fellow Solo shot = pre-infusion (hold pressure for a duration) ->
+// infusion stages [{duration,pressure}] -> optional ramp-down.
+// Rendered as the mockup's {t (s), p (bar)} curve points.
+function fellowToPoints(f) {
+  const pts = [];
+  let t = 0;
+  if (f.preInfusionEnabled && f.preInfusionDuration) {
+    const hold = f.preInfusionHoldPressure ?? 3;
+    pts.push({ t: 0, p: Math.min(2, hold) });   // fill ramps up from low
+    t = f.preInfusionDuration;
+    pts.push({ t, p: hold });
+  } else {
+    pts.push({ t: 0, p: 2 });
+  }
+  (f.infusion || []).forEach(s => {
+    pts.push({ t, p: s.pressure });             // step to stage pressure
+    t += s.duration;
+    pts.push({ t, p: s.pressure });             // hold for the stage
+  });
+  if (f.rampDownEnabled && f.rampDownDuration) {
+    t += f.rampDownDuration;
+    pts.push({ t, p: f.rampDownEndPressure ?? pts[pts.length - 1].p });
+  }
+  return pts;
+}
+
+function fellowToProfile(f) {
+  const points = fellowToPoints(f);
+  return {
+    id: f.id, name: f.title || 'Untitled', points, meta: profileMeta(points),
+    fellow: f, badge: f.folder === 'drops' ? 'Drops' : (f.roasterName || null),
+  };
+}
+
+function applyDevice(d) {
+  if (d.displayName) document.querySelector('.brand .model').textContent = d.displayName;
+  const ok = !!d.isConnected;
+  $('connDot').classList.toggle('off', !ok);
+  $('connLabel').textContent = ok
+    ? `Connected · Wi-Fi${d.firmwareVersion ? ' · fw ' + d.firmwareVersion : ''}`
+    : 'Offline';
+  activeProfileId = d.activeProfileId || activeProfileId;   // mark the machine's active profile
+  renderList(); renderDetail();
+}
+
+function setDataSrc(text) { const el = $('dataSrc'); if (el) el.textContent = text; }
+
+// Data source: Electron IPC bridge (window.fellowAPI) when running as the desktop
+// app, else the localhost proxy (/api/*) when served by server.mjs in a browser.
+async function fellowProfiles() {
+  if (window.fellowAPI) return window.fellowAPI.profiles();
+  const r = await fetch('/api/profiles');
+  if (!r.ok) throw new Error('profiles HTTP ' + r.status);
+  return r.json();                                // throws if not JSON (e.g. static host)
+}
+async function fellowDevice() {
+  if (window.fellowAPI) return window.fellowAPI.device();
+  const r = await fetch('/api/device');
+  if (!r.ok) throw new Error('device HTTP ' + r.status);
+  return r.json();
+}
+async function fellowSetActive(profileId) {
+  if (window.fellowAPI && window.fellowAPI.setActive) return window.fellowAPI.setActive(profileId);
+  const r = await fetch('/api/active-profile', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ profileId }),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function fellowCreateProfile(dto) {
+  if (window.fellowAPI && window.fellowAPI.createProfile) return window.fellowAPI.createProfile(dto);
+  const r = await fetch('/api/profiles', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  return r.json();
+}
+async function fellowUpdateProfile(pid, dto) {
+  if (window.fellowAPI && window.fellowAPI.updateProfile) return window.fellowAPI.updateProfile(pid, dto);
+  const r = await fetch('/api/profiles/' + encodeURIComponent(pid), {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto),
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  return r.json();
+}
+async function fellowDeleteProfile(pid) {
+  if (window.fellowAPI && window.fellowAPI.deleteProfile) return window.fellowAPI.deleteProfile(pid);
+  const r = await fetch('/api/profiles/' + encodeURIComponent(pid), { method: 'DELETE' });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  return r.json().catch(() => ({}));
+}
+
+async function loadLiveData() {
+  try {
+    const raw = await fellowProfiles();
+    const real = (Array.isArray(raw) ? raw : []).filter(f => !f.deletedAt).map(fellowToProfile);
+    if (real.length) {
+      const customs = PROFILES.filter(p => p.custom);   // keep user's saved customs
+      PROFILES.length = 0;
+      PROFILES.push(...real, ...customs);
+      state.profile = real[0].id;
+      isLive = true;
+      renderAll();
+      setDataSrc(`live · ${real.length} profiles from Fellow Series 1`);
+    }
+    try { applyDevice(await fellowDevice()); } catch { /* device object is optional */ }
+  } catch (e) {
+    isLive = false;
+    setDataSrc('simulated profiles (offline — run server.mjs or launch the desktop app)');
+  }
+}
+
+/* ---------- sign-in / sign-out (desktop app; OS-keychain-backed) ---------- */
+function showSignIn() { $('signinModal').hidden = false; setTimeout(() => $('siEmail').focus(), 50); }
+function hideSignIn() { $('signinModal').hidden = true; }
+async function doSignIn() {
+  const email = $('siEmail').value.trim(), password = $('siPassword').value;
+  if (!email || !password) { $('siError').textContent = 'enter email and password'; return; }
+  const btn = $('siSubmit'); btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const r = await window.fellowAPI.signIn(email, password);   // validates + stores in keychain
+    if (r && r.ok) { $('siPassword').value = ''; $('siError').textContent = ''; hideSignIn(); loadLiveData(); }
+    else { $('siError').textContent = (r && r.error) || 'sign-in failed'; }
+  } catch (e) { $('siError').textContent = String(e.message || e); }
+  btn.disabled = false; btn.textContent = 'Sign in';
+}
+$('siSubmit').addEventListener('click', doSignIn);
+$('siPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doSignIn(); });
+if (window.fellowAPI && window.fellowAPI.signOut) {
+  $('signOutBtn').hidden = false;
+  $('signOutBtn').addEventListener('click', async () => { await window.fellowAPI.signOut(); location.reload(); });
+}
+
+// Boot: desktop app gates on keychain auth; browser/dev uses the proxy (or simulated).
+async function initApp() {
+  if (window.fellowAPI && window.fellowAPI.authStatus) {
+    let authed = false;
+    try { authed = await window.fellowAPI.authStatus(); } catch { /* treat as signed-out */ }
+    if (authed) loadLiveData(); else showSignIn();
+  } else {
+    loadLiveData();
+  }
+}
+
+renderAll();
+initApp();
+</script>
+</body>
+</html>

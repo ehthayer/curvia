@@ -1,0 +1,51 @@
+{
+  "name": "curvia",
+  "version": "1.0.0",
+  "description": "Curvia — an unofficial profile manager for the Fellow Espresso Series 1",
+  "main": "electron-main.cjs",
+  "author": "Eric Thayer",
+  "license": "ISC",
+  "type": "commonjs",
+  "scripts": {
+    "app": "electron .",
+    "app:smoke": "FELLOW_SMOKE=1 electron .",
+    "server": "node server.mjs",
+    "test": "node smoke.mjs",
+    "test:live": "node live_test.mjs",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "electron": "^42.4.0",
+    "electron-builder": "^26.15.2",
+    "playwright": "^1.60.0"
+  },
+  "build": {
+    "appId": "org.thayerfolks.curvia",
+    "productName": "Curvia",
+    "directories": { "output": "dist" },
+    "files": [
+      "electron-main.cjs",
+      "preload.cjs",
+      "fellow-client.mjs",
+      "index.html",
+      "icon.png",
+      "icon.icns"
+    ],
+    "mac": {
+      "icon": "icon.icns",
+      "category": "public.app-category.lifestyle",
+      "target": "dmg"
+    },
+    "win": {
+      "icon": "icon.png",
+      "target": "nsis"
+    },
+    "linux": {
+      "icon": "icon.png",
+      "category": "Utility",
+      "target": "AppImage"
+    }
+  }
+}
