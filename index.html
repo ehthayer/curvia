@@ -391,6 +391,7 @@ function renderDetail() {
       ${f && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
       ${f && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
       ${(p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
+      ${f ? '<button class="ghost" id="cloneBtn">Clone</button>' : ''}
     </div>`;
   drawCurve($('detailCurve'), p.points);
 }
@@ -451,6 +452,7 @@ $('profiles').addEventListener('click', e => {
 });
 $('detail').addEventListener('click', async e => {
   if (e.target.id === 'editBtn') { openEditor(state.profile); return; }
+  if (e.target.id === 'cloneBtn') { openEditor(state.profile, { clone: true }); return; }
   if (e.target.id === 'setActiveBtn') {
     const p = PROFILES.find(x => x.id === state.profile);
     const pid = (p && p.fellow && p.fellow.id) || state.profile;
@@ -490,23 +492,33 @@ function setEditorBusy(busy) {
     .forEach(el => { el.disabled = busy; });
 }
 
-function openEditor(editId = null) {
+function openEditor(editId = null, { clone = false } = {}) {
   const p = editId ? PROFILES.find(x => x.id === editId) : null;
-  editor.editId = editId;
-  editor.realPid = (p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
-  editor.isLocal = !!(p && p.custom);                                     // local custom (localStorage)
+  editor.editId = clone ? null : editId;                                  // a clone saves as a NEW profile
+  editor.realPid = (!clone && p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
+  editor.isLocal = !clone && !!(p && p.custom);                           // local custom (localStorage)
   editor.model = p && p.fellow ? structuredClone(p.fellow)
     : p ? { ...DEFAULT_MODEL(), title: p.name }
     : DEFAULT_MODEL();
+  let tempClamped = false;
+  if (clone) {
+    // Seed a new custom from the source's brew fields (transition/adaptive ride along;
+    // buildDTO drops id + Drops metadata on save). The source is never written.
+    delete editor.model.id;
+    editor.model.folder = 'custom';
+    editor.model.title = (editor.model.title || (p && p.name) || 'Untitled') + ' (copy)';
+    // Some older Drops carry temp > the server's current @Max(94); clamp so the clone saves.
+    if (editor.model.temperature > 94) { editor.model.temperature = 94; tempClamped = true; }
+  }
   if (!Array.isArray(editor.model.infusion) || !editor.model.infusion.length)
     editor.model.infusion = [{ duration: 25, pressure: 9 }];
-  $('editorTitle').textContent = editId ? 'Edit profile' : 'New profile';
+  $('editorTitle').textContent = clone ? 'Clone profile' : editId ? 'Edit profile' : 'New profile';
   setEditorBusy(false);                                                     // reset after a prior save/delete
   deleteArmed = false;
-  $('edDelete').hidden = !(editId && (editor.isLocal || editor.realPid));   // local custom OR device profile
+  $('edDelete').hidden = !(editor.editId && (editor.isLocal || editor.realPid));   // local custom OR device profile
   $('edDelete').textContent = 'Delete';
   $('edSave').textContent = isLive ? 'Save to machine' : 'Save';
-  $('edError').textContent = '';
+  $('edError').textContent = tempClamped ? 'note: temperature lowered to 94 °C (machine max)' : '';
   fillForm();
   $('editorModal').hidden = false;
 }

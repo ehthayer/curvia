@@ -68,7 +68,22 @@ await page.reload();
 await page.waitForTimeout(300);
 check('custom profile survives reload', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
 
-// 7. select → edit from detail → delete (two-step: first click arms, second deletes)
+// 7. clone from detail → editor opens as a NEW copy → save adds, original untouched
+await page.locator('.pitem', { hasText: 'Playwright Test' }).click();
+await page.click('#cloneBtn');
+check('clone opens editor', await page.locator('#editorModal').isVisible());
+check('clone editor titled "Clone profile"', (await page.locator('#editorTitle').textContent()) === 'Clone profile');
+check('clone prefills name with (copy)', (await page.inputValue('#edName')) === 'Playwright Test (copy)');
+check('clone hides delete (nothing to delete yet)', await page.locator('#edDelete').isHidden());
+await page.fill('#edName', 'Cloned Shot');
+await page.click('#edSave');
+check('cloned profile in list', (await page.locator('.pitem', { hasText: 'Cloned Shot' }).count()) === 1);
+check('original survives clone', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 1);
+await page.click('#editBtn');                       // clone is selected after save; clean it up
+await page.click('#edDelete'); await page.click('#edDelete');
+check('clone cleanup deleted', (await page.locator('.pitem', { hasText: 'Cloned Shot' }).count()) === 0);
+
+// 8. select → edit from detail → delete (two-step: first click arms, second deletes)
 await page.locator('.pitem', { hasText: 'Playwright Test' }).click();
 await page.screenshot({ path: 'shots/manager.png' });
 await page.click('#editBtn');
@@ -80,7 +95,7 @@ check('profile not deleted before confirm', (await page.locator('.pitem', { hasT
 await page.click('#edDelete');
 check('deleted profile removed', (await page.locator('.pitem', { hasText: 'Playwright Test' }).count()) === 0);
 
-// 8. export downloads a JSON backup
+// 9. export downloads a JSON backup
 const [download] = await Promise.all([page.waitForEvent('download'), page.click('#exportBtn')]);
 const fname = download.suggestedFilename();
 check('export downloads a JSON backup', fname.startsWith('curvia-profiles-') && fname.endsWith('.json'));
