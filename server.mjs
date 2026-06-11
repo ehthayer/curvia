@@ -4,6 +4,7 @@
  * real Fellow cloud API (see FELLOW_API.md), using the shared client:
  *   GET  /api/profiles       -> Series 1 espresso profiles
  *   GET  /api/device         -> Series 1 device object
+ *   GET  /api/roasters?q=…   -> search the global customs catalog by roaster/title/notes (read-only)
  *   POST /api/active-profile -> set active profile {profileId}  (verified write)
  *
  * Credentials stay server-side (never sent to the browser):
@@ -14,7 +15,7 @@
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, hasCredentials } from './fellow-client.mjs';
+import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, searchRoasterProfiles, hasCredentials } from './fellow-client.mjs';
 
 const PORT = process.env.PORT || 8099;
 
@@ -58,6 +59,10 @@ const server = createServer(async (req, res) => {
       if (req.url.startsWith('/api/profiles/') && req.method === 'DELETE') {
         const pid = decodeURIComponent(req.url.slice('/api/profiles/'.length));
         return send(res, 200, await deleteProfile(pid));
+      }
+      if (req.url.startsWith('/api/roasters') && req.method === 'GET') {
+        const q = new URL(req.url, 'http://localhost').searchParams.get('q') || '';
+        return send(res, 200, await searchRoasterProfiles(q));
       }
       if (req.url === '/api/device') return send(res, 200, await getDevice());
       if (req.url === '/api/active-profile' && req.method === 'POST') {
