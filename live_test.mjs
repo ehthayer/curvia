@@ -60,6 +60,7 @@ try {
     check('detail shows real params (94°C / 36g yield)', /94\s*°C/.test(detail) && /36\s*g/.test(detail), detail.slice(0, 90));
     const selName = await page.$eval('.pitem.sel .pname', e => e.textContent.replace('★', '').trim()).catch(() => '');
     check('selected item highlighted', selName === target, selName);
+    check('Drops profile is not deletable (no delete button)', (await page.locator('#deleteBtn').count()) === 0);
     await page.screenshot({ path: 'shots/live-detail.png' });
   } else {
     check(`found "${target}" in list`, false, `have: ${names.join(', ')}`);
