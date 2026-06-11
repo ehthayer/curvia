@@ -123,6 +123,13 @@ await page.waitForTimeout(100);
 check('no-match search shows empty detail',
   (await page.locator('#detail').textContent()).includes('Select a profile'));
 
+// 11. deleted customs stay deleted across reload (no demo profile re-seeded)
+await page.reload();
+await page.waitForTimeout(300);
+await page.locator('.folder', { hasText: 'Custom' }).click();
+await page.waitForTimeout(100);
+check('deleted customs stay gone after reload', (await page.locator('.pitem').count()) === 0);
+
 await browser.close();
 server.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed');
