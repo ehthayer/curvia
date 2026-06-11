@@ -149,3 +149,28 @@ export async function deleteProfile(pid) {
   return apiWrite('DELETE', `/v2/solo/devices/${await soloId()}/profiles/${encodeURIComponent(pid)}`,
     { settingsVersion: Math.floor(Date.now() / 1000) });
 }
+
+/** Search the global customs catalog by roaster / title / notes. READ-ONLY.
+ *  GET /v2/solo/profiles returns every user's customs (~5k, unscoped, unpaginated —
+ *  see FELLOW_API.md §5.1), so cache the payload briefly instead of refetching per
+ *  keystroke. Results are other people's profiles: display + clone only, never a
+ *  PATCH/DELETE target. */
+let catalogCache = null, catalogFetchedAt = 0;
+const CATALOG_TTL_MS = 10 * 60_000;
+export async function searchRoasterProfiles(query, limit = 60) {
+  requireCreds();
+  const q = String(query || '').trim().toLowerCase();
+  if (q.length < 2) return [];
+  if (!catalogCache || Date.now() - catalogFetchedAt > CATALOG_TTL_MS) {
+    const raw = await api('/v2/solo/profiles');
+    catalogCache = Array.isArray(raw) ? raw : [];
+    catalogFetchedAt = Date.now();
+  }
+  const has = s => typeof s === 'string' && s.toLowerCase().includes(q);
+  return catalogCache
+    .filter(p => !p.deletedAt && (has(p.roasterName) || has(p.title) || has(p.notes)))
+    .sort((a, b) => (has(b.roasterName) - has(a.roasterName)) ||   // roaster matches first,
+      (!!b.notes - !!a.notes) ||                                   // then ones with notes to read,
+      String(a.title || '').localeCompare(String(b.title || '')))
+    .slice(0, limit);
+}

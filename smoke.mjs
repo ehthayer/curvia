@@ -130,6 +130,19 @@ await page.locator('.folder', { hasText: 'Custom' }).click();
 await page.waitForTimeout(100);
 check('deleted customs stay gone after reload', (await page.locator('.pitem').count()) === 0);
 
+// 12. Roasters mode (offline): hint, then a graceful needs-live message — never a crash
+await page.locator('.folder', { hasText: 'Roasters' }).click();
+await page.waitForTimeout(100);
+check('roasters folder shows search hint', (await page.locator('#profiles').innerText()).includes('Type a roaster name'));
+check('roasters empty detail', (await page.locator('#detail').innerText()).includes('Select a profile'));
+await page.fill('#search', 'sey');
+await page.waitForTimeout(700);                            // debounce (300ms) + fetch
+check('offline roaster search reports needs-live', (await page.locator('#profiles').innerText()).includes('live connection'));
+await page.fill('#search', '');
+await page.locator('.folder', { hasText: 'All' }).click();
+await page.waitForTimeout(100);
+check('leaving roasters restores the list', (await page.locator('.pitem').count()) > 0);
+
 await browser.close();
 server.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed');

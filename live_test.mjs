@@ -75,6 +75,27 @@ try {
     check('active profile shows "Active on machine"', (await page.$eval('#detail', e => e.textContent)).includes('Active on machine'));
   }
 
+  // Roasters mode — read-only search of the global customs catalog.
+  // Results are other users' profiles: clone must be the ONLY action offered.
+  await page.locator('.folder', { hasText: 'Roasters' }).click();
+  await page.fill('#search', 'sey');
+  await page.waitForTimeout(4000);                  // debounce + first catalog fetch (~5k records)
+  const roasterCount = await page.locator('.pitem').count();
+  check('roaster search "sey" returns catalog results', roasterCount > 0, String(roasterCount));
+  if (roasterCount) {
+    await page.locator('.pitem').first().click();
+    await page.waitForTimeout(150);
+    check('catalog detail is clone-only (no edit/delete/set-active)',
+      (await page.locator('#cloneBtn').count()) === 1 &&
+      (await page.locator('#editBtn').count()) === 0 &&
+      (await page.locator('#deleteBtn').count()) === 0 &&
+      (await page.locator('#setActiveBtn').count()) === 0);
+    await page.screenshot({ path: 'shots/live-roasters.png' });
+  }
+  await page.fill('#search', '');
+  await page.locator('.folder', { hasText: 'All' }).click();
+  await page.waitForTimeout(150);
+
   check('no JS page errors', pageErrors.length === 0, pageErrors.join('; '));
 } finally {
   await browser.close();

@@ -29,6 +29,7 @@ ipcMain.handle('fellow:setActive', async (_e, profileId) => (await client()).set
 ipcMain.handle('fellow:createProfile', async (_e, dto) => (await client()).createProfile(dto));
 ipcMain.handle('fellow:updateProfile', async (_e, pid, dto) => (await client()).updateProfile(pid, dto));
 ipcMain.handle('fellow:deleteProfile', async (_e, pid) => (await client()).deleteProfile(pid));
+ipcMain.handle('fellow:roasters', async (_e, q) => (await client()).searchRoasterProfiles(q));
 
 // --- credential storage: encrypted via the OS keychain (Electron safeStorage) ---
 // macOS Keychain / Windows DPAPI / Linux libsecret hold the key; the encrypted blob

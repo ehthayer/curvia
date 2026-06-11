@@ -325,12 +325,43 @@ const safeImageUrl = u => (typeof u === 'string' && /^https?:\/\//i.test(u)) ? e
 /* ---------- profile manager: folders | list | detail ---------- */
 let activeProfileId = null;   // which profile the machine has active (from the device object)
 const FOLDERS = [
-  { key: 'all',    label: 'All' },
-  { key: 'drops',  label: 'Drops' },
-  { key: 'custom', label: 'Custom' },
-  { key: 'fellow', label: 'Built-in' },
+  { key: 'all',      label: 'All' },
+  { key: 'drops',    label: 'Drops' },
+  { key: 'custom',   label: 'Custom' },
+  { key: 'fellow',   label: 'Built-in' },
+  { key: 'roasters', label: 'Roasters' },   // searches the global catalog, not PROFILES
 ];
 const folderOf = p => (p.fellow && p.fellow.folder) || (p.custom ? 'custom' : 'fellow');
+
+/* Roasters mode: search the community catalog (other users' shared customs) by
+   roaster/title/notes. Results are READ-ONLY — clone is the only allowed action;
+   they must never become a PATCH/DELETE/set-active target on this device. */
+let ROASTER_RESULTS = [];     // fellowToProfile-mapped, each marked catalog:true
+let roasterHint = 'Type a roaster name to search the community catalog (e.g. "Sey").';
+let roasterSeq = 0, roasterTimer = null;
+async function runRoasterSearch() {
+  const q = state.query;
+  if (q.length < 2) { ROASTER_RESULTS = []; roasterHint = 'Type a roaster name to search the community catalog (e.g. "Sey").'; renderAll(); return; }
+  const seq = ++roasterSeq;
+  roasterHint = 'Searching…'; renderList();
+  try {
+    const raw = await fellowSearchRoasters(q);
+    if (seq !== roasterSeq) return;               // a newer search superseded this one
+    ROASTER_RESULTS = (Array.isArray(raw) ? raw : []).map(f => {
+      const p = fellowToProfile(f); p.catalog = true; return p;
+    });
+    roasterHint = ROASTER_RESULTS.length ? '' : `No catalog profiles match “${q}”.`;
+  } catch (e) {
+    if (seq !== roasterSeq) return;
+    ROASTER_RESULTS = [];
+    roasterHint = 'Roaster search needs the live connection (sign in / run server.mjs).';
+  }
+  renderAll();
+}
+function scheduleRoasterSearch() {
+  clearTimeout(roasterTimer);
+  roasterTimer = setTimeout(runRoasterSearch, 300);
+}
 let deleteArmedId = null;     // two-step delete: id of the profile armed for confirm (no undo on the machine)
 const isActive = p => activeProfileId != null &&
   ((p.fellow && p.fellow.id) === activeProfileId || p.id === activeProfileId);
@@ -339,7 +370,7 @@ const visibleProfiles = () => PROFILES.filter(p =>
   (!state.query || p.name.toLowerCase().includes(state.query)));
 
 function renderFolders() {
-  const counts = { all: PROFILES.length };
+  const counts = { all: PROFILES.length, roasters: ROASTER_RESULTS.length };
   PROFILES.forEach(p => { const f = folderOf(p); counts[f] = (counts[f] || 0) + 1; });
   $('folders').innerHTML = FOLDERS.map(f => `
     <div class="folder ${state.folder === f.key ? 'sel' : ''}" data-folder="${f.key}">
@@ -348,24 +379,29 @@ function renderFolders() {
 }
 
 function renderList() {
-  const list = visibleProfiles();
+  const roasters = state.folder === 'roasters';
+  const list = roasters ? ROASTER_RESULTS : visibleProfiles();
   // keep selection valid for the current filter
   if (!list.some(p => p.id === state.profile)) state.profile = list.length ? list[0].id : null;
+  const emptyMsg = roasters ? roasterHint : 'No profiles match.';
   $('profiles').innerHTML = list.length ? list.map(p => `
     <div class="pitem ${p.id === state.profile ? 'sel' : ''}" data-id="${p.id}">
       <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${esc(p.name)}</div>
-      <div class="pmeta">${esc(p.meta)}</div>
-    </div>`).join('') : '<div class="pmeta" style="padding:10px">No profiles match.</div>';
+      <div class="pmeta">${esc(p.catalog ? [p.fellow.roasterName, p.meta, p.fellow.notes && 'notes'].filter(Boolean).join(' · ') : p.meta)}</div>
+    </div>`).join('') : `<div class="pmeta" style="padding:10px">${esc(emptyMsg)}</div>`;
 }
+
+const findProfile = id => PROFILES.find(x => x.id === id) || ROASTER_RESULTS.find(x => x.id === id);
 
 function renderDetail() {
   const el = $('detail');
-  const p = PROFILES.find(x => x.id === state.profile);
+  const p = findProfile(state.profile);
   if (!p) { el.innerHTML = '<div class="empty">Select a profile.</div>'; return; }
   const f = p.fellow;
   const photoUrl = f && safeImageUrl(f.imageUrl);
   const photo = photoUrl ? `<img class="photo" src="${photoUrl}" alt="" onerror="this.remove()">` : '';
-  const sub = f ? [f.roasterName, f.folder].filter(Boolean).join(' · ') : (p.custom ? 'custom · local' : 'built-in');
+  const sub = p.catalog ? [f.roasterName, 'community catalog'].filter(Boolean).join(' · ')
+    : f ? [f.roasterName, f.folder].filter(Boolean).join(' · ') : (p.custom ? 'custom · local' : 'built-in');
   const param = (k, v) => `<div class="param"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
   const params = f ? [
     param('Temp', f.temperature != null ? f.temperature + ' °C' : '—'),
@@ -383,11 +419,11 @@ function renderDetail() {
     <div class="params">${params}</div>
     ${f && f.notes ? `<div class="notes">${esc(f.notes)}</div>` : ''}
     <div class="dactions">
-      ${f && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
-      ${f && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
-      ${(p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
+      ${f && !p.catalog && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
+      ${f && !p.catalog && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
+      ${!p.catalog && (p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
       ${f ? '<button class="ghost" id="cloneBtn">Clone</button>' : ''}
-      ${(p.custom || folderOf(p) === 'custom') ? `<button class="ghost danger" id="deleteBtn">${deleteArmedId === p.id ? 'Confirm delete' : 'Delete'}</button>` : ''}
+      ${!p.catalog && (p.custom || folderOf(p) === 'custom') ? `<button class="ghost danger" id="deleteBtn">${deleteArmedId === p.id ? 'Confirm delete' : 'Delete'}</button>` : ''}
     </div>`;
   drawCurve($('detailCurve'), p.points);
 }
@@ -434,10 +470,13 @@ $('folders').addEventListener('click', e => {
   const f = e.target.closest('[data-folder]');
   if (!f) return;
   state.folder = f.dataset.folder;
+  $('search').placeholder = state.folder === 'roasters' ? 'Search roasters…' : 'Search profiles…';
+  if (state.folder === 'roasters') runRoasterSearch();   // pick up any query already typed
   renderFolders(); renderList(); renderDetail();
 });
 $('search').addEventListener('input', e => {
   state.query = e.target.value.trim().toLowerCase();
+  if (state.folder === 'roasters') { scheduleRoasterSearch(); return; }
   renderList(); renderDetail();
 });
 $('profiles').addEventListener('click', e => {
@@ -452,7 +491,7 @@ $('detail').addEventListener('click', async e => {
   if (e.target.id === 'cloneBtn') { openEditor(state.profile, { clone: true }); return; }
   if (e.target.id === 'deleteBtn') {
     const p = PROFILES.find(x => x.id === state.profile);
-    if (!p) return;
+    if (!p || p.catalog) return;   // catalog results are other users' profiles — never a delete target
     if (deleteArmedId !== p.id) {                 // first click arms — delete is permanent, no undo
       deleteArmedId = p.id;
       e.target.textContent = 'Confirm delete';
@@ -478,7 +517,8 @@ $('detail').addEventListener('click', async e => {
   }
   if (e.target.id === 'setActiveBtn') {
     const p = PROFILES.find(x => x.id === state.profile);
-    const pid = (p && p.fellow && p.fellow.id) || state.profile;
+    if (!p || p.catalog) return;   // catalog ids don't exist on this device
+    const pid = (p.fellow && p.fellow.id) || state.profile;
     const btn = e.target; btn.disabled = true; btn.textContent = 'Setting…';
     try {
       await fellowSetActive(pid);          // PATCH …/active-profile via proxy / IPC
@@ -515,7 +555,8 @@ function setEditorBusy(busy) {
 }
 
 function openEditor(editId = null, { clone = false } = {}) {
-  const p = editId ? PROFILES.find(x => x.id === editId) : null;
+  const p = editId ? findProfile(editId) : null;
+  if (p && p.catalog) clone = true;   // catalog profiles can only be cloned, never edited in place
   editor.editId = clone ? null : editId;                                  // a clone saves as a NEW profile
   editor.realPid = (!clone && p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
   editor.model = p && p.fellow ? structuredClone(p.fellow)
@@ -808,6 +849,12 @@ async function fellowDeleteProfile(pid) {
   const r = await fetch('/api/profiles/' + encodeURIComponent(pid), { method: 'DELETE' });
   if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
   return r.json().catch(() => ({}));
+}
+async function fellowSearchRoasters(q) {
+  if (window.fellowAPI && window.fellowAPI.searchRoasters) return window.fellowAPI.searchRoasters(q);
+  const r = await fetch('/api/roasters?q=' + encodeURIComponent(q));
+  if (!r.ok) throw new Error('roasters HTTP ' + r.status);
+  return r.json();                                // throws if not JSON (e.g. static host)
 }
 
 /** Refetch profiles + device state. Returns true when the fetch worked — callers that
