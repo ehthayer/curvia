@@ -51,6 +51,17 @@ check('editor seeds one infusion stage', (await page.locator('.ed-stage').count(
 // 4. edit fields + add a stage
 await page.fill('#edName', 'Playwright Test');
 await page.fill('#edTemp', '90');
+
+// 4b. Eureka dial ⇄ grind packing (R.MMmm: rev counter + zero-padded mark)
+await page.fill('#edRev', '0');
+await page.fill('#edMark', '19.75');
+check('eureka rev 0 mark 19.75 packs to 0.1975', (await page.inputValue('#edGrind')) === '0.1975');
+await page.fill('#edGrind', '1.054');
+check('grind 1.054 unpacks to rev 1', (await page.inputValue('#edRev')) === '1');
+check('grind 1.054 unpacks to mark 5.4', (await page.inputValue('#edMark')) === '5.4');
+await page.fill('#edGrind', '1.7');
+check('non-eureka grind (mark 70) blanks the dial', (await page.inputValue('#edRev')) === '' && (await page.inputValue('#edMark')) === '');
+await page.fill('#edGrind', '2');
 await page.click('#edAddStage');
 check('add stage appends a row', (await page.locator('.ed-stage').count()) === 2);
 

@@ -231,6 +231,10 @@
       <label>Ratio 1:<input type="number" id="edRatio" min="1" max="5" step="0.5"></label>
       <label>Grind<input type="number" id="edGrind" min="0" max="10" step="0.1"></label>
     </div>
+    <div class="ed-grid" style="margin-top:6px">
+      <label>Eureka rev<input type="number" id="edRev" min="0" max="9" step="1"></label>
+      <label>Eureka mark<input type="number" id="edMark" min="0" max="19.95" step="0.05"></label>
+    </div>
     <label class="ed-toggle" style="margin-bottom:14px"><input type="checkbox" id="edDeclining"> Declining temperature</label>
     <div class="ed-block">
       <label class="ed-toggle"><input type="checkbox" id="edPiEnabled"> Pre-infusion</label>
@@ -547,6 +551,29 @@ const DEFAULT_MODEL = () => ({
 });
 const editor = { editId: null, realPid: null, model: null };
 
+/* Eureka Single Dose PRO dial ⇄ grindSize packing: R.MMmm — revolution counter,
+   then the dial mark zero-padded to two digits (+ optional fraction digits).
+   0.054 = rev 0 mark 5.4 · 0.1975 = rev 0 mark 19.75. Personal convention — the
+   field is advisory only (the Series 1 has no grinder), so any 0–10 float is valid;
+   values that don't decode (e.g. Fellow-scale 1.7 → mark 70) leave the dial blank. */
+function packEureka(rev, mark) {
+  if (!(Number.isInteger(rev) && rev >= 0 && rev <= 9 && mark >= 0 && mark < 20)) return null;
+  const [mm, frac = ''] = String(mark).split('.');
+  return parseFloat(`${rev}.${mm.padStart(2, '0')}${frac}`);
+}
+function unpackEureka(g) {
+  if (g == null || !isFinite(g) || g < 0) return null;
+  const [revS, digits = ''] = String(g).split('.');
+  const d = digits.padEnd(2, '0');             // float trimming: rev 0 mark 10 → "0.1"
+  const rev = +revS, mark = +d.slice(0, 2) + (d.length > 2 ? +('0.' + d.slice(2)) : 0);
+  return (rev <= 9 && mark < 20) ? { rev, mark } : null;
+}
+function fillEurekaDial(grind) {
+  const eu = unpackEureka(grind);
+  $('edRev').value = eu ? eu.rev : '';
+  $('edMark').value = eu ? eu.mark : '';
+}
+
 // Lock the whole editor while a write is in flight — edits made mid-save would be
 // silently wiped by the post-save refetch.
 function setEditorBusy(busy) {
@@ -587,6 +614,7 @@ function fillForm() {
   const m = editor.model;
   $('edName').value = m.title || '';
   $('edTemp').value = m.temperature; $('edDose').value = m.dose; $('edRatio').value = m.ratio; $('edGrind').value = m.grindSize;
+  fillEurekaDial(m.grindSize);
   $('edPiEnabled').checked = !!m.preInfusionEnabled;
   $('edPiHold').value = m.preInfusionHoldPressure ?? 3;
   $('edPiFlow').value = m.preInfusionFillFlowRate ?? 4.5;
@@ -745,6 +773,16 @@ $('edStages').addEventListener('click', e => {
   if (!rm) return;
   syncFromForm(); editor.model.infusion.splice(+rm.dataset.rm, 1); renderStages(); drawEditorCurve();
 });
+// Eureka dial ⇄ grind sync. These element-level listeners run before the modal's
+// bubbled input listener below, so syncFromForm() always reads the updated grind.
+const eurekaToGrind = () => {
+  const packed = packEureka(numf($('edRev').value), numf($('edMark').value));
+  if (packed != null) $('edGrind').value = packed;
+};
+$('edRev').addEventListener('input', eurekaToGrind);
+$('edMark').addEventListener('input', eurekaToGrind);
+$('edGrind').addEventListener('input', () =>
+  fillEurekaDial($('edGrind').value === '' ? null : numf($('edGrind').value)));
 $('editorModal').addEventListener('input', () => { syncFromForm(); drawEditorCurve(); });
 $('editorModal').addEventListener('change', e => {
   if (e.target.id === 'edPiEnabled' || e.target.id === 'edRdEnabled') toggleRows();
