@@ -154,6 +154,21 @@ await page.locator('.folder', { hasText: 'All' }).click();
 await page.waitForTimeout(100);
 check('leaving roasters restores the list', (await page.locator('.pitem').count()) > 0);
 
+// 13. Shared folder (offline): import row renders; bad input + offline resolve fail gracefully
+await page.locator('.folder', { hasText: 'Shared' }).click();
+await page.waitForTimeout(100);
+check('shared folder shows import row', await page.locator('#shareLinkInput').isVisible());
+check('shared folder empty hint', (await page.locator('#profiles').innerText()).includes('No shared imports yet'));
+await page.fill('#shareLinkInput', 'not a link!!');
+await page.click('#importShareBtn');
+await page.waitForTimeout(100);
+check('bad share link rejected', (await page.locator('#dataSrc').innerText()).includes('not a brew.link'));
+await page.fill('#shareLinkInput', 'https://brew.link/p/AbCdEf1234/espresso');
+await page.click('#importShareBtn');
+await page.waitForTimeout(500);
+check('offline import fails gracefully', (await page.locator('#dataSrc').innerText()).includes('import failed'));
+check('no shared item added on failure', (await page.locator('.pitem').count()) === 0);
+
 await browser.close();
 server.close();
 console.log(failures ? `\n${failures} FAILURE(S)` : '\nall checks passed');

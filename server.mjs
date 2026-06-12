@@ -15,7 +15,7 @@
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, searchRoasterProfiles, hasCredentials } from './fellow-client.mjs';
+import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, searchRoasterProfiles, resolveSharedProfile, hasCredentials } from './fellow-client.mjs';
 
 const PORT = process.env.PORT || 8099;
 
@@ -46,6 +46,11 @@ const server = createServer(async (req, res) => {
       return send(res, 200, await readFile(new URL('./index.html', import.meta.url)), 'text/html');
     }
     if (req.url.startsWith('/api/')) {
+      // brew.link resolve is public upstream (no account involved) — allow it credless
+      if (req.url.startsWith('/api/shared/') && req.method === 'GET') {
+        const code = decodeURIComponent(req.url.slice('/api/shared/'.length));
+        return send(res, 200, await resolveSharedProfile(code));
+      }
       if (!hasCredentials()) return send(res, 503, { error: 'set FELLOW_EMAIL and FELLOW_PASSWORD env vars' });
       if ((req.method === 'POST' || req.method === 'PATCH') && !isJson(req)) {
         return send(res, 415, { error: 'content-type must be application/json' });

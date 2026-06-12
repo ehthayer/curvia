@@ -96,6 +96,30 @@ try {
   await page.locator('.folder', { hasText: 'All' }).click();
   await page.waitForTimeout(150);
 
+  // Shared imports — resolve a real brew.link code (public endpoint, read-only) and
+  // verify the local copy is clone-only against the device but locally deletable.
+  // NOTE: depends on this share link staying live; re-share any profile to replace it.
+  const SHARE_CODE = '5kM9Qv2nkB';
+  await page.locator('.folder', { hasText: 'Shared' }).click();
+  await page.fill('#shareLinkInput', `https://brew.link/p/${SHARE_CODE}/espresso`);
+  await page.click('#importShareBtn');
+  await page.waitForTimeout(2500);
+  const imported = await page.locator('.pitem').count();
+  check('brew.link import resolves', imported === 1, await page.$eval('#dataSrc', e => e.textContent));
+  if (imported) {
+    check('shared detail marks brew.link provenance', /brew\.link/i.test(await page.locator('.dsub').innerText()));
+    check('shared import is clone-only vs device (no edit/set-active)',
+      (await page.locator('#cloneBtn').count()) === 1 &&
+      (await page.locator('#editBtn').count()) === 0 &&
+      (await page.locator('#setActiveBtn').count()) === 0);
+    await page.screenshot({ path: 'shots/live-shared.png' });
+    await page.click('#deleteBtn'); await page.click('#deleteBtn');   // local delete only — cleans up
+    await page.waitForTimeout(150);
+    check('shared import locally deletable', (await page.locator('.pitem').count()) === 0);
+  }
+  await page.locator('.folder', { hasText: 'All' }).click();
+  await page.waitForTimeout(150);
+
   check('no JS page errors', pageErrors.length === 0, pageErrors.join('; '));
 } finally {
   await browser.close();
