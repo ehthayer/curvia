@@ -50,6 +50,7 @@ Aiden routes do not use — this was the crux that made `/v2/devices/{FS_id}/pro
 | PATCH | `/v2/solo/devices/{FS_id}/profiles/{pid}` | **Edit profile** — `temperature`/`infusion[]`/`decliningTemp`/`notes`/… ✅ **verified e2e** (see §2.1) |
 | DELETE | `/v2/solo/devices/{FS_id}/profiles/{pid}` | **Delete profile** — ✅ **verified e2e**. ⚠ **requires a `{settingsVersion}` body** (else 400) |
 | POST | `/v2/solo/devices/{FS_id}/profiles/{pid}/share` | Share profile ✅(exists) |
+| GET | `/v2/shared/{code}/{deviceType}` | **Resolve a brew.link share code → full profile DTO.** PUBLIC — no auth (the brew.link web page resolves logged-out; it's `publicAxios` in that bundle). Series 1 uses `deviceType` `espresso`; param order is `{code}` then `{type}` (reversed 404s). DTO adds `sharedFrom` (stable pseudonymous sharer id), `createdAt`. ✅ verified 2026-06-11 with an own-account share link |
 | PATCH | `/v2/solo/devices/{FS_id}/active-profile` | Set active profile (body `{profileId, settingsVersion}`) ✅ **verified e2e** (propagates to panel) |
 | PATCH | `/v2/solo/devices/{FS_id}/{start\|stop\|clean\|rinse}` | **Remote brew/clean/rinse — NON-FUNCTIONAL.** Routes 200-accept but the machine ignores them; `start`+`rinse` verified no-op (see §7) ✅(negative) |
 | GET | `/v2/solo/profiles` | **Global, unscoped catalog of all users' `custom` profiles** (~5k). Ignores `?userId=`/`?owner=`/`?mine=`/`?limit=`/`?offset=`. **The app never calls this** (0 refs in bundle) — likely an unintended/admin route (see §5.1) ✅ |

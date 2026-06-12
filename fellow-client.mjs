@@ -150,6 +150,19 @@ export async function deleteProfile(pid) {
     { settingsVersion: Math.floor(Date.now() / 1000) });
 }
 
+/** Resolve a brew.link share code → full profile DTO (official opt-in sharing).
+ *  PUBLIC endpoint — no credentials needed (the brew.link web page resolves it
+ *  logged-out). Series 1 codes live at /v2/shared/{code}/espresso. The DTO carries
+ *  a pseudonymous `sharedFrom` id. See FELLOW_API.md §2. */
+export async function resolveSharedProfile(code) {
+  if (!/^[A-Za-z0-9]{6,24}$/.test(String(code || ''))) throw new Error('invalid share code');
+  const r = await fetch(`${HOST}/v2/shared/${code}/espresso`, {
+    headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!r.ok) throw new Error(`shared/${code} -> HTTP ${r.status}`);
+  return r.json();
+}
+
 /** Search the global customs catalog by roaster / title / notes. READ-ONLY.
  *  GET /v2/solo/profiles returns every user's customs (~5k, unscoped, unpaginated —
  *  see FELLOW_API.md §5.1), so cache the payload briefly instead of refetching per

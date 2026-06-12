@@ -301,13 +301,20 @@ const PROFILES = [
 ];
 
 const STORAGE_KEY = 'fellow-custom-profiles';
+const SHARED_KEY = 'fellow-shared-profiles';   // brew.link imports — local copies w/ provenance
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
   saved.forEach(p => PROFILES.push(p));
 } catch (e) { /* corrupt storage — start clean */ }
+try {
+  JSON.parse(localStorage.getItem(SHARED_KEY) || '[]').forEach(p => PROFILES.push(p));
+} catch (e) { /* corrupt storage — start clean */ }
 
 function persistCustoms() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(PROFILES.filter(p => p.custom)));
+}
+function persistShared() {
+  localStorage.setItem(SHARED_KEY, JSON.stringify(PROFILES.filter(p => p.sharedImport)));
 }
 
 function profileMeta(points) {
@@ -332,10 +339,12 @@ const FOLDERS = [
   { key: 'all',      label: 'All' },
   { key: 'drops',    label: 'Drops' },
   { key: 'custom',   label: 'Custom' },
+  { key: 'shared',   label: 'Shared' },     // brew.link imports (official opt-in sharing)
   { key: 'fellow',   label: 'Built-in' },
   { key: 'roasters', label: 'Roasters' },   // searches the global catalog, not PROFILES
 ];
-const folderOf = p => (p.fellow && p.fellow.folder) || (p.custom ? 'custom' : 'fellow');
+const folderOf = p => p.sharedImport ? 'shared'
+  : (p.fellow && p.fellow.folder) || (p.custom ? 'custom' : 'fellow');
 
 /* Roasters mode: search the community catalog (other users' shared customs) by
    roaster/title/notes. Results are READ-ONLY — clone is the only allowed action;
@@ -387,12 +396,18 @@ function renderList() {
   const list = roasters ? ROASTER_RESULTS : visibleProfiles();
   // keep selection valid for the current filter
   if (!list.some(p => p.id === state.profile)) state.profile = list.length ? list[0].id : null;
-  const emptyMsg = roasters ? roasterHint : 'No profiles match.';
-  $('profiles').innerHTML = list.length ? list.map(p => `
+  const emptyMsg = roasters ? roasterHint
+    : state.folder === 'shared' ? 'No shared imports yet.' : 'No profiles match.';
+  const importRow = state.folder !== 'shared' ? '' : `
+    <div style="display:flex;gap:6px;padding:10px 10px 12px">
+      <input type="text" id="shareLinkInput" placeholder="Paste a brew.link…" style="flex:1">
+      <button class="mini-btn" type="button" id="importShareBtn">Import</button>
+    </div>`;
+  $('profiles').innerHTML = importRow + (list.length ? list.map(p => `
     <div class="pitem ${p.id === state.profile ? 'sel' : ''}" data-id="${p.id}">
       <div class="pname">${isActive(p) ? '<span class="star">★</span>' : ''}${esc(p.name)}</div>
       <div class="pmeta">${esc(p.catalog ? [p.fellow.roasterName, p.meta, p.fellow.notes && 'notes'].filter(Boolean).join(' · ') : p.meta)}</div>
-    </div>`).join('') : `<div class="pmeta" style="padding:10px">${esc(emptyMsg)}</div>`;
+    </div>`).join('') : `<div class="pmeta" style="padding:10px">${esc(emptyMsg)}</div>`);
 }
 
 const findProfile = id => PROFILES.find(x => x.id === id) || ROASTER_RESULTS.find(x => x.id === id);
@@ -402,9 +417,11 @@ function renderDetail() {
   const p = findProfile(state.profile);
   if (!p) { el.innerHTML = '<div class="empty">Select a profile.</div>'; return; }
   const f = p.fellow;
+  const foreign = p.catalog || p.sharedImport;   // someone else's profile — never a device-write target
   const photoUrl = f && safeImageUrl(f.imageUrl);
   const photo = photoUrl ? `<img class="photo" src="${photoUrl}" alt="" onerror="this.remove()">` : '';
   const sub = p.catalog ? [f.roasterName, 'community catalog'].filter(Boolean).join(' · ')
+    : p.sharedImport ? [f.roasterName, 'shared via brew.link'].filter(Boolean).join(' · ')
     : f ? [f.roasterName, f.folder].filter(Boolean).join(' · ') : (p.custom ? 'custom · local' : 'built-in');
   const param = (k, v) => `<div class="param"><div class="k">${k}</div><div class="v">${esc(v)}</div></div>`;
   const params = f ? [
@@ -423,11 +440,11 @@ function renderDetail() {
     <div class="params">${params}</div>
     ${f && f.notes ? `<div class="notes">${esc(f.notes)}</div>` : ''}
     <div class="dactions">
-      ${f && !p.catalog && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
-      ${f && !p.catalog && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
-      ${!p.catalog && (p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
+      ${f && !foreign && !isActive(p) ? '<button class="primary" id="setActiveBtn">Set Active</button>' : ''}
+      ${f && !foreign && isActive(p) ? '<button class="ghost" disabled>✓ Active on machine</button>' : ''}
+      ${!foreign && (p.custom || folderOf(p) === 'custom') ? '<button class="ghost" id="editBtn">Edit</button>' : ''}
       ${f ? '<button class="ghost" id="cloneBtn">Clone</button>' : ''}
-      ${!p.catalog && (p.custom || folderOf(p) === 'custom') ? `<button class="ghost danger" id="deleteBtn">${deleteArmedId === p.id ? 'Confirm delete' : 'Delete'}</button>` : ''}
+      ${p.sharedImport || (!foreign && (p.custom || folderOf(p) === 'custom')) ? `<button class="ghost danger" id="deleteBtn">${deleteArmedId === p.id ? 'Confirm delete' : 'Delete'}</button>` : ''}
     </div>`;
   drawCurve($('detailCurve'), p.points);
 }
@@ -484,12 +501,41 @@ $('search').addEventListener('input', e => {
   renderList(); renderDetail();
 });
 $('profiles').addEventListener('click', e => {
+  if (e.target.id === 'importShareBtn') { importSharedLink(); return; }
   const el = e.target.closest('.pitem');
   if (!el) return;
   state.profile = el.dataset.id;
   deleteArmedId = null;                  // changing selection disarms a pending delete
   renderList(); renderDetail();
 });
+
+/* Import a brew.link share (official opt-in sharing): accepts a full
+   https://brew.link/p/{code}/espresso URL or a bare code. The resolved profile is
+   stored as a LOCAL copy (folder "shared", id "shared-{code}") with provenance —
+   it is not written to the machine unless cloned + saved. */
+async function importSharedLink() {
+  const raw = $('shareLinkInput').value.trim();
+  const m = raw.match(/^(?:https?:\/\/)?(?:brew\.link\/p\/)?([A-Za-z0-9]{6,24})(?:\/espresso\/?)?$/);
+  if (!m) { setDataSrc('not a brew.link profile URL or share code'); return; }
+  const code = m[1];
+  const btn = $('importShareBtn'); btn.disabled = true; btn.textContent = 'Importing…';
+  try {
+    const dto = await fellowResolveShared(code);
+    const p = fellowToProfile(dto);
+    p.id = 'shared-' + code;             // never collides with a device profile id
+    p.sharedImport = true;
+    p.shared = { code, sharedFrom: dto.sharedFrom || null, importedAt: new Date().toISOString() };
+    const i = PROFILES.findIndex(x => x.id === p.id);   // re-import refreshes the copy
+    if (i >= 0) PROFILES.splice(i, 1, p); else PROFILES.push(p);
+    persistShared();
+    state.profile = p.id;
+    setDataSrc(`imported “${p.name}” from brew.link`);
+    renderAll();
+  } catch (err) {
+    setDataSrc('import failed: ' + (err.message || err));
+    btn.disabled = false; btn.textContent = 'Import';
+  }
+}
 $('detail').addEventListener('click', async e => {
   if (e.target.id === 'editBtn') { openEditor(state.profile); return; }
   if (e.target.id === 'cloneBtn') { openEditor(state.profile, { clone: true }); return; }
@@ -502,6 +548,13 @@ $('detail').addEventListener('click', async e => {
       return;
     }
     deleteArmedId = null;
+    if (p.sharedImport) {                         // brew.link import: local copy only — never a device call
+      const idx = PROFILES.findIndex(x => x.id === p.id);
+      if (idx >= 0) PROFILES.splice(idx, 1);
+      state.profile = null;
+      persistShared(); renderAll();
+      return;
+    }
     if (p.fellow && p.fellow.id && isLive) {      // device custom: permanent delete on the machine
       const btn = e.target; btn.disabled = true; btn.textContent = 'Deleting…';
       try {
@@ -521,7 +574,7 @@ $('detail').addEventListener('click', async e => {
   }
   if (e.target.id === 'setActiveBtn') {
     const p = PROFILES.find(x => x.id === state.profile);
-    if (!p || p.catalog) return;   // catalog ids don't exist on this device
+    if (!p || p.catalog || p.sharedImport) return;   // foreign ids don't exist on this device
     const pid = (p.fellow && p.fellow.id) || state.profile;
     const btn = e.target; btn.disabled = true; btn.textContent = 'Setting…';
     try {
@@ -583,7 +636,7 @@ function setEditorBusy(busy) {
 
 function openEditor(editId = null, { clone = false } = {}) {
   const p = editId ? findProfile(editId) : null;
-  if (p && p.catalog) clone = true;   // catalog profiles can only be cloned, never edited in place
+  if (p && (p.catalog || p.sharedImport)) clone = true;   // foreign profiles can only be cloned, never edited in place
   editor.editId = clone ? null : editId;                                  // a clone saves as a NEW profile
   editor.realPid = (!clone && p && !p.custom && p.fellow && p.fellow.id) || null;   // PATCH target (device profile only)
   editor.model = p && p.fellow ? structuredClone(p.fellow)
@@ -894,6 +947,12 @@ async function fellowSearchRoasters(q) {
   if (!r.ok) throw new Error('roasters HTTP ' + r.status);
   return r.json();                                // throws if not JSON (e.g. static host)
 }
+async function fellowResolveShared(code) {
+  if (window.fellowAPI && window.fellowAPI.resolveShared) return window.fellowAPI.resolveShared(code);
+  const r = await fetch('/api/shared/' + encodeURIComponent(code));
+  if (!r.ok) throw new Error('shared HTTP ' + r.status);
+  return r.json();                                // throws if not JSON (e.g. static host)
+}
 
 /** Refetch profiles + device state. Returns true when the fetch worked — callers that
  *  just wrote to the machine use this to tell "saved but refresh failed" apart from
@@ -903,9 +962,9 @@ async function loadLiveData() {
     const raw = await fellowProfiles();
     const real = (Array.isArray(raw) ? raw : []).filter(f => !f.deletedAt).map(fellowToProfile);
     if (real.length) {
-      const customs = PROFILES.filter(p => p.custom);   // keep user's saved customs
+      const locals = PROFILES.filter(p => p.custom || p.sharedImport);   // keep saved customs + brew.link imports
       PROFILES.length = 0;
-      PROFILES.push(...real, ...customs);
+      PROFILES.push(...real, ...locals);
       state.profile = real[0].id;
       isLive = true;
       renderAll();
