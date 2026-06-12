@@ -168,6 +168,8 @@
   .toast .spin { width: 13px; height: 13px; flex: none; border: 2px solid var(--line);
     border-top-color: var(--accent-2); border-radius: 50%; animation: toastspin 0.6s linear infinite; }
   @keyframes toastspin { to { transform: rotate(360deg); } }
+  #dataSrc .sharelink { color: var(--accent-2); font-weight: 700; font-size: 0.8rem;
+    letter-spacing: normal; user-select: all; }
 
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(8, 8, 10, 0.72);
@@ -867,7 +869,8 @@ $('shareBtn').addEventListener('click', async () => {
     const copied = link && await copyText(link);
     if (link) {
       showToast(copied ? '✓ brew.link copied to clipboard' : 'brew.link ready — copy failed, see footer', { duration: 2800 });
-      setDataSrc((copied ? 'link copied: ' : 'share link: ') + link);   // footer keeps the selectable link
+      // footer keeps the selectable link, styled gold so it stands out from the muted line
+      $('dataSrc').innerHTML = esc(copied ? 'link copied: ' : 'share link: ') + `<span class="sharelink">${esc(link)}</span>`;
     } else {
       showToast('Share failed: no link returned', { duration: 3200 });
     }
