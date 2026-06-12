@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('fellowAPI', {
   deleteProfile: (pid) => ipcRenderer.invoke('fellow:deleteProfile', pid),
   searchRoasters: (q) => ipcRenderer.invoke('fellow:roasters', q),
   resolveShared: (code) => ipcRenderer.invoke('fellow:resolveShared', code),
+  shareProfile: (pid) => ipcRenderer.invoke('fellow:shareProfile', pid),
   authStatus: () => ipcRenderer.invoke('fellow:authStatus'),
   signIn: (email, password) => ipcRenderer.invoke('fellow:signIn', email, password),
   signOut: () => ipcRenderer.invoke('fellow:signOut'),

@@ -113,6 +113,15 @@ const [download] = await Promise.all([page.waitForEvent('download'), page.click(
 const fname = download.suggestedFilename();
 check('export downloads a JSON backup', fname.startsWith('curvia-profiles-') && fname.endsWith('.json'));
 
+// 9b. Share button present; offline (no live device customs) it guides rather than firing a write
+check('share button present', (await page.locator('#shareBtn').count()) === 1);
+await page.locator('.folder', { hasText: 'Built-in' }).click();
+await page.locator('.pitem').first().click();      // a built-in is not shareable
+await page.click('#shareBtn');
+await page.waitForTimeout(100);
+check('share guards non-custom selection', (await page.locator('#dataSrc').innerText()).includes('your own custom'));
+await page.locator('.folder', { hasText: 'All' }).click();
+
 // 10. empty folder shows the empty detail state, not a stale profile from another folder
 await page.locator('.folder', { hasText: 'Built-in' }).click();
 await page.locator('.pitem').first().click();

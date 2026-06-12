@@ -78,8 +78,8 @@
   .folder:hover { background: var(--panel-2); }
   .folder.sel { background: #211d16; border-color: var(--accent-2); color: var(--text); }
   .folder .count { font-size: 0.72rem; opacity: 0.7; font-variant-numeric: tabular-nums; }
-  .list-head { display: flex; gap: 8px; margin-bottom: 10px; }
-  .list-head .search { flex: 1; background: var(--panel-2); border: 1px solid var(--line);
+  .list-head { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .list-head .search { flex: 1 1 100%; background: var(--panel-2); border: 1px solid var(--line);
     border-radius: 10px; color: var(--text); padding: 9px 12px; font: inherit; font-size: 0.83rem; }
   .list-head .search:focus { outline: none; border-color: var(--accent-2); }
   .plist { display: flex; flex-direction: column; gap: 6px; max-height: 76vh; overflow-y: auto; padding-right: 2px; }
@@ -208,6 +208,7 @@
       <div class="list-head">
         <input class="search" id="search" type="text" placeholder="Search profiles…" />
         <button class="mini-btn" id="exportBtn" title="Download all profiles as JSON (backup)">Export</button>
+        <button class="mini-btn" id="shareBtn" title="Copy a public brew.link for the selected custom profile">Share</button>
         <button class="mini-btn" id="newProfileBtn">+ New</button>
       </div>
       <div class="plist" id="profiles"></div>
@@ -814,6 +815,40 @@ $('exportBtn').addEventListener('click', () => {
 });
 
 /* ---------- editor interactions ---------- */
+/* Clipboard with a file:// fallback — Electron loads index.html over file://,
+   which is not a secure context, so navigator.clipboard may be absent. */
+async function copyText(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; }
+  } catch { /* fall through to execCommand */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch { return false; }
+}
+
+/* Share the selected profile → public brew.link, copied to the clipboard. Only the
+   user's own device customs are shareable (need a real device id; built-ins/Drops and
+   foreign catalog/shared imports are not ours to publish). The link is permanent —
+   same as the iOS Share button (see fellow-client shareProfile). */
+$('shareBtn').addEventListener('click', async () => {
+  const p = findProfile(state.profile);
+  const shareable = p && isLive && p.fellow && p.fellow.id &&
+    !p.catalog && !p.sharedImport && (p.custom || folderOf(p) === 'custom');
+  if (!shareable) { setDataSrc('select one of your own custom profiles to share'); return; }
+  const btn = $('shareBtn'); btn.disabled = true; btn.textContent = 'Sharing…';
+  try {
+    const { link } = await fellowShareProfile(p.fellow.id);
+    const copied = link && await copyText(link);
+    setDataSrc(link ? (copied ? `link copied: ${link}` : `share link: ${link}`) : 'share failed: no link returned');
+  } catch (err) {
+    setDataSrc('share failed: ' + (err.message || err));
+  } finally {
+    btn.disabled = false; btn.textContent = 'Share';
+  }
+});
 $('newProfileBtn').addEventListener('click', () => openEditor(null));
 $('edCancel').addEventListener('click', closeEditor);
 $('editorModal').addEventListener('click', e => { if (e.target === $('editorModal')) closeEditor(); });
@@ -952,6 +987,14 @@ async function fellowResolveShared(code) {
   const r = await fetch('/api/shared/' + encodeURIComponent(code));
   if (!r.ok) throw new Error('shared HTTP ' + r.status);
   return r.json();                                // throws if not JSON (e.g. static host)
+}
+async function fellowShareProfile(pid) {
+  if (window.fellowAPI && window.fellowAPI.shareProfile) return window.fellowAPI.shareProfile(pid);
+  const r = await fetch('/api/profiles/' + encodeURIComponent(pid) + '/share', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },   // content-type satisfies the proxy's write guard
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status + ' ' + (await r.text()).slice(0, 120));
+  return r.json();
 }
 
 /** Refetch profiles + device state. Returns true when the fetch worked — callers that

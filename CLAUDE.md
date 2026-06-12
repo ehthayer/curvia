@@ -42,9 +42,10 @@ npm run pack|dist  # electron-builder: unpacked app | installers
   CRUD writes). Both entry points reuse it. Loads `.env` verbatim (its own parser — do **not** use
   `node --env-file`, which truncates values at an unquoted `#`).
 - `server.mjs` — browser proxy: serves `index.html` + `/api/{profiles,device,active-profile,roasters,shared}`
-  and `POST`/`PATCH`/`DELETE /api/profiles`. `/api/roasters?q=` searches the global customs catalog;
-  `/api/shared/{code}` resolves a brew.link share (public upstream, allowed credless). Both return
-  other users' profiles — read-only; clone is the only allowed device action on a result. `electron-main.cjs`/`preload.cjs` expose the same over IPC
+  and `POST`/`PATCH`/`DELETE /api/profiles` + `POST /api/profiles/{pid}/share`. `/api/roasters?q=`
+  searches the global customs catalog; `/api/shared/{code}` resolves a brew.link share (public upstream,
+  allowed credless) — both return other users' profiles (read-only; clone is the only device action).
+  `POST …/share` mints a **permanent, irrevocable** public brew.link for one of the user's own customs. `electron-main.cjs`/`preload.cjs` expose the same over IPC
   (`window.fellowAPI`). The page prefers IPC, falls back to `/api/*`, then to simulated profiles.
 - `index.html` — manager (folders/list/detail) + structured editor; all UI + JS inline.
 

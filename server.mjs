@@ -15,7 +15,7 @@
  */
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, searchRoasterProfiles, resolveSharedProfile, hasCredentials } from './fellow-client.mjs';
+import { getProfiles, getDevice, setActiveProfile, createProfile, updateProfile, deleteProfile, searchRoasterProfiles, resolveSharedProfile, shareProfile, hasCredentials } from './fellow-client.mjs';
 
 const PORT = process.env.PORT || 8099;
 
@@ -57,6 +57,10 @@ const server = createServer(async (req, res) => {
       }
       if (req.url === '/api/profiles' && req.method === 'GET') return send(res, 200, await getProfiles());
       if (req.url === '/api/profiles' && req.method === 'POST') return send(res, 200, await createProfile(await readJson(req)));
+      if (req.url.startsWith('/api/profiles/') && req.url.endsWith('/share') && req.method === 'POST') {
+        const pid = decodeURIComponent(req.url.slice('/api/profiles/'.length, -'/share'.length));
+        return send(res, 201, await shareProfile(pid));   // ⚠ mints a PERMANENT public brew.link
+      }
       if (req.url.startsWith('/api/profiles/') && req.method === 'PATCH') {
         const pid = decodeURIComponent(req.url.slice('/api/profiles/'.length));
         return send(res, 200, await updateProfile(pid, await readJson(req)));
