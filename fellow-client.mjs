@@ -150,6 +150,17 @@ export async function deleteProfile(pid) {
     { settingsVersion: Math.floor(Date.now() / 1000) });
 }
 
+/** Share a device profile → returns its public brew.link. Verified contract:
+ *  POST …/profiles/{pid}/share with NO body → 201 {"link":"https://brew.link/p/{code}/espresso"}.
+ *  ⚠ The link is a PERMANENT, immutable snapshot — resolving it returns a copy captured at
+ *  share time, it outlives a deleted source profile, and there is no revoke route (all DELETEs
+ *  403). Same model as the iOS app's Share button. See FELLOW_API.md §2. */
+export async function shareProfile(pid) {
+  requireCreds();
+  if (!pid) throw new Error('profile id required');
+  return apiWrite('POST', `/v2/solo/devices/${await soloId()}/profiles/${encodeURIComponent(pid)}/share`);
+}
+
 /** Resolve a brew.link share code → full profile DTO (official opt-in sharing).
  *  PUBLIC endpoint — no credentials needed (the brew.link web page resolves it
  *  logged-out). Series 1 codes live at /v2/shared/{code}/espresso. The DTO carries
