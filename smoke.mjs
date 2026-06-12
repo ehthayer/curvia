@@ -118,8 +118,11 @@ check('share button present', (await page.locator('#shareBtn').count()) === 1);
 await page.locator('.folder', { hasText: 'Built-in' }).click();
 await page.locator('.pitem').first().click();      // a built-in is not shareable
 await page.click('#shareBtn');
-await page.waitForTimeout(100);
-check('share guards non-custom selection', (await page.locator('#dataSrc').innerText()).includes('your own custom'));
+await page.waitForTimeout(150);
+const guardToast = await page.locator('#toast').evaluate(el => ({ shown: el.classList.contains('show'), text: el.textContent }));
+check('share guard shows a toast', guardToast.shown && /your own custom/i.test(guardToast.text), guardToast.text);
+await page.waitForTimeout(2900);
+check('toast auto-dismisses', !(await page.locator('#toast').evaluate(el => el.classList.contains('show'))));
 await page.locator('.folder', { hasText: 'All' }).click();
 
 // 10. empty folder shows the empty detail state, not a stale profile from another folder
