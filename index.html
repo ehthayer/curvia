@@ -158,6 +158,18 @@
     color: var(--accent-2); border-color: var(--accent-2); background: transparent;
   }
   .mini-btn:hover { background: #211d16; border-color: var(--accent-2); }
+  /* transient confirmation toast (share-to-clipboard feedback) */
+  .toast { position: fixed; left: 50%; bottom: 64px; transform: translateX(-50%) translateY(8px);
+    display: flex; align-items: center; gap: 10px; max-width: 80vw;
+    background: var(--panel-2); border: 1px solid var(--accent-2); color: var(--text);
+    padding: 11px 18px; border-radius: 10px; font-size: 0.85rem; box-shadow: 0 10px 34px rgba(0,0,0,0.55);
+    opacity: 0; pointer-events: none; z-index: 200; transition: opacity 0.18s ease, transform 0.18s ease; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast .spin { width: 13px; height: 13px; flex: none; border: 2px solid var(--line);
+    border-top-color: var(--accent-2); border-radius: 50%; animation: toastspin 0.6s linear infinite; }
+  @keyframes toastspin { to { transform: rotate(360deg); } }
+  #dataSrc .sharelink { color: var(--accent-2); font-weight: 700; font-size: 0.8rem;
+    letter-spacing: normal; user-select: all; }
 
   .modal-backdrop {
     position: fixed; inset: 0; background: rgba(8, 8, 10, 0.72);
@@ -220,6 +232,8 @@
 
   <footer>CURVIA · <span id="dataSrc">simulated profiles</span> · set-active works · no live telemetry/brew · NOT AFFILIATED WITH FELLOW</footer>
 </div>
+
+<div class="toast" id="toast" aria-live="polite"></div>
 
 <div class="modal-backdrop" id="editorModal" hidden>
   <div class="modal editor">
@@ -815,6 +829,16 @@ $('exportBtn').addEventListener('click', () => {
 });
 
 /* ---------- editor interactions ---------- */
+/* Transient toast. duration:0 keeps it up (caller replaces/dismisses it). */
+let toastTimer = null;
+function showToast(msg, { spinner = false, duration = 0 } = {}) {
+  const t = $('toast');
+  t.innerHTML = (spinner ? '<span class="spin"></span>' : '') + `<span>${esc(msg)}</span>`;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  if (duration) toastTimer = setTimeout(() => t.classList.remove('show'), duration);
+}
+
 /* Clipboard with a file:// fallback — Electron loads index.html over file://,
    which is not a secure context, so navigator.clipboard may be absent. */
 async function copyText(text) {
@@ -837,13 +861,21 @@ $('shareBtn').addEventListener('click', async () => {
   const p = findProfile(state.profile);
   const shareable = p && isLive && p.fellow && p.fellow.id &&
     !p.catalog && !p.sharedImport && (p.custom || folderOf(p) === 'custom');
-  if (!shareable) { setDataSrc('select one of your own custom profiles to share'); return; }
+  if (!shareable) { showToast('Select one of your own custom profiles to share', { duration: 2800 }); return; }
   const btn = $('shareBtn'); btn.disabled = true; btn.textContent = 'Sharing…';
+  showToast('Copying brew.link to clipboard…', { spinner: true });
   try {
     const { link } = await fellowShareProfile(p.fellow.id);
     const copied = link && await copyText(link);
-    setDataSrc(link ? (copied ? `link copied: ${link}` : `share link: ${link}`) : 'share failed: no link returned');
+    if (link) {
+      showToast(copied ? '✓ brew.link copied to clipboard' : 'brew.link ready — copy failed, see footer', { duration: 2800 });
+      // footer keeps the selectable link, styled gold so it stands out from the muted line
+      $('dataSrc').innerHTML = esc(copied ? 'link copied: ' : 'share link: ') + `<span class="sharelink">${esc(link)}</span>`;
+    } else {
+      showToast('Share failed: no link returned', { duration: 3200 });
+    }
   } catch (err) {
+    showToast('Share failed: ' + (err.message || err), { duration: 3600 });
     setDataSrc('share failed: ' + (err.message || err));
   } finally {
     btn.disabled = false; btn.textContent = 'Share';
